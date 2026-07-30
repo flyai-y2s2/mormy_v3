@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fdf8ef;
+  --foreground: #3b2f22;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-body);
+  --font-hand: var(--font-hand);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+/* 모르미가 블록을 쌓다 무너뜨리는 반복 — 대사 없이 '서툰 동생'을 전달한다 */
+@keyframes block-stack {
+  0%,
+  12% {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+  20%,
+  72% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  84%,
+  100% {
+    opacity: 0;
+    transform: translateY(10px) rotate(18deg);
+  }
+}
+
+/* "아~!" 순간의 반짝임 */
+@keyframes sparkle-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+/* 모르미 숨쉬기 — 가만히 있을 때도 살아 있어 보이게 */
+@keyframes idle-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* 도장이 쿵 찍히는 순간 */
+@keyframes stamp-press {
+  0% {
+    opacity: 0;
+    transform: scale(2.2) rotate(-14deg);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(0.94) rotate(-8deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-8deg);
+  }
+}
+
+/* 별노트에 손글씨가 적히는 커서 */
+@keyframes hand-caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.anim-block {
+  animation: block-stack 4.2s ease-in-out infinite;
+}
+.anim-sparkle {
+  animation: sparkle-pop 1.4s ease-out forwards;
+}
+.anim-bob {
+  animation: idle-bob 3.4s ease-in-out infinite;
+}
+.anim-stamp {
+  animation: stamp-press 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.font-hand {
+  font-family: var(--font-hand), cursive;
+}
