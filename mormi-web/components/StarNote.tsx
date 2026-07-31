@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { withSubject } from "@/lib/korean";
 
 /**
  * 별노트 — 모르미의 수첩.
@@ -12,14 +13,19 @@ export function StarNote({
   typing,
   cover = "별",
   past = [],
+  childName,
 }: {
   notes: { text: string; coauthored?: boolean }[];
   typing?: string | null;
+  /** 아이 이름 — 노트의 주인이 누구인지 이름으로 남긴다 */
+  childName?: string;
   /** 아이가 첫 만남에서 고른 표지 */
   cover?: string;
   /** 지난 세션에 적힌 기록 — 누적이 눈에 보여야 가르칠 이유가 남는다 */
   past?: { text: string; day: number; coauthored?: boolean }[];
 }) {
+  // "네가"보다 이름으로 불러야 노트가 '내 것'으로 남는다. 조사는 받침으로 고른다.
+  const by = childName ? withSubject(childName) : "네가";
   return (
     <div className="rounded-2xl border-2 border-[#d9b98a] bg-[#fffdf5] p-4">
       <h2 className="mb-2 flex items-center gap-1.5 text-sm font-medium text-[#8a6d3f]">
@@ -35,12 +41,19 @@ export function StarNote({
 
       <ul className="space-y-3">
         {past.map((n, i) => (
-          <Entry key={`p${i}`} text={n.text} day={n.day} coauthored={n.coauthored} faded />
+          <Entry
+            key={`p${i}`}
+            text={n.text}
+            day={n.day}
+            coauthored={n.coauthored}
+            by={by}
+            faded
+          />
         ))}
         {notes.map((n, i) => (
-          <Entry key={i} text={n.text} coauthored={n.coauthored} />
+          <Entry key={i} text={n.text} coauthored={n.coauthored} by={by} />
         ))}
-        {typing && <Entry text={typing} animate />}
+        {typing && <Entry text={typing} animate by={by} />}
       </ul>
     </div>
   );
@@ -52,12 +65,15 @@ function Entry({
   day,
   faded,
   coauthored,
+  by = "네가",
 }: {
   text: string;
   animate?: boolean;
   day?: number;
   faded?: boolean;
   coauthored?: boolean;
+  /** 노트를 남긴 사람 — "승은이가" 처럼 조사가 붙은 형태로 받는다 */
+  by?: string;
 }) {
   const shown = useTyped(text, animate);
   return (
@@ -72,7 +88,7 @@ function Entry({
         )}
       </p>
       <p className="mt-0.5 font-hand text-[15px] text-[#b08b52]">
-        — {coauthored ? "같이 완성함" : "네가 알려줌"}{day ? ` (${day}일째)` : ""}
+        — {coauthored ? "같이 완성함" : `${by} 알려줌`}{day ? ` (${day}일째)` : ""}
       </p>
     </li>
   );

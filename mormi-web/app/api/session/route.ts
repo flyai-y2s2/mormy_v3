@@ -43,8 +43,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   if (body.action === "start") {
-    // 화면이 보관하던 프로필을 함께 받는다 (서버리스에는 저장된 파일이 없다)
-    const { sessionId, turn } = startSession(body.profile ?? null);
+    // 화면이 profile 키를 보냈는지 자체가 의미다 — null 은 "첫 만남부터"라는 뜻이므로
+    // 서버 파일로 되살리지 않는다.
+    const sent = Object.prototype.hasOwnProperty.call(body, "profile");
+    const { sessionId, turn } = startSession(sent ? (body.profile ?? null) : undefined);
     const state = getSession(sessionId);
     return NextResponse.json({ sessionId, ...turn, state, profile: state?.profile });
   }

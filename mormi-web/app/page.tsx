@@ -50,6 +50,7 @@ interface Turn {
   starNote?: string;
   cover?: string;
   mormiName?: string;
+  childName?: string;
   bubbles?: string[];
   /** 서버가 되돌려준 세션 상태 — 다음 요청에 그대로 실어 보낸다 (서버리스 대응) */
   state?: unknown;
@@ -599,6 +600,7 @@ export default function Home() {
           typing={typing}
           cover={turn?.cover}
           past={past}
+          childName={turn?.childName}
         />
 
         {turn && turn.report.length > 0 && (

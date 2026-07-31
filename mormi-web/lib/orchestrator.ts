@@ -70,6 +70,8 @@ export interface TurnResult {
   cover?: string;
   /** 아이가 지어준 이름 — 화면의 모든 문구가 이 이름을 쓴다 */
   mormiName?: string;
+  /** 아이 이름 — 별노트 귀속 표기에 쓴다 */
+  childName?: string;
   /**
    * 한 턴에 모르미가 말풍선을 두 개 이상 띄울 때 (예: 고마움 인사 → 숙제 부탁).
    * 화제가 바뀌는 자리는 줄바꿈이 아니라 말풍선을 나눠야 아이가 따라온다.
@@ -308,6 +310,7 @@ function result(
     input: "mic",
     cover: state.profile.noteCover,
     mormiName: state.profile.mormiName,
+    childName: state.profile.childName,
     ladder: state.ladder,
     report: state.report,
     elapsedSec: elapsed(state),
@@ -317,7 +320,10 @@ function result(
 
 // ---------- 씬 진행 (LLM 없음 — 대본이 정해진 구간) ----------
 
-export function startSession(incoming?: Profile | null): {
+export function startSession(
+  /** undefined = 화면이 말이 없음, null = 화면이 '프로필 없음'을 명시 */
+  incoming?: Profile | null,
+): {
   sessionId: string;
   turn: TurnResult;
 } {
@@ -346,8 +352,14 @@ export function startSession(incoming?: Profile | null): {
     generalizeReasked: false,
     generalizeStem: null,
     offTopicCount: 0,
-    // 화면이 들고 있던 프로필을 우선한다 — 서버리스에는 저장된 파일이 없다.
-    profile: incoming ?? loadProfile() ?? newProfile(),
+    // 프로필의 주인은 화면이다.
+    // incoming 이 undefined  = 화면이 프로필 얘기를 안 함 → 서버 파일을 본다(로컬 개발 편의)
+    // incoming 이 null       = 화면이 "나는 프로필이 없다"고 명시 → 첫 만남부터 시작한다
+    // 이 둘을 뭉뚱그리면 '첫 만남부터'를 눌러도 서버에 남은 옛 파일이 되살아난다.
+    profile:
+      incoming === undefined
+        ? (loadProfile() ?? newProfile())
+        : (incoming ?? newProfile()),
     report: [],
     startedAt: Date.now(),
   };

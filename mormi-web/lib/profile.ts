@@ -74,19 +74,5 @@ export function newProfile(): Profile {
   };
 }
 
-/**
- * 이름 + 주격 조사. 받침이 있으면 "이가", 없으면 "가".
- * 아이 이름을 틀린 조사로 부르면 "내 이름을 아는 존재"라는 느낌이 깨진다.
- */
-export function withSubject(name: string): string {
-  const last = name.trim().slice(-1).charCodeAt(0) - 0xac00;
-  if (last < 0 || last > 11171) return `${name}가`;
-  return last % 28 === 0 ? `${name}가` : `${name}이가`;
-}
-
-/** 이름 + 서술격 조사. 받침이 있으면 "이야", 없으면 "야". */
-export function withCopula(name: string): string {
-  const last = name.trim().slice(-1).charCodeAt(0) - 0xac00;
-  if (last < 0 || last > 11171) return `${name}야`;
-  return last % 28 === 0 ? `${name}야` : `${name}이야`;
-}
+// 한글 조사·음절 유틸은 화면에서도 쓰므로 fs 를 타지 않는 모듈에 둔다.
+export { withSubject, withCopula, mishear } from "./korean";
