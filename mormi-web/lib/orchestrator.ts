@@ -937,23 +937,42 @@ async function onOffTopic(
   // 여기서도 답을 주지 않으면 다음 막힘 처리(이월)가 자연히 닫는다.
   if (overTime || state.offTopicCount >= 3) {
     state.ladder = 0;
-    const mormi = await speak(state,
-      `아이가 장난을 이어간다. 장난에 웃어주지 말고 아주 심심하게 한마디로만 받아라. 그리고 "그럼 마지막으로 이거 하나만!" 하며 아주 쉬운 질문을 부탁하라: "${it.reask_by_ladder["0"]}"`,
+    const react = await speak(state,
+      `아이가 장난을 계속한다("${childText}"). 장난에 웃어주거나 받아치지 말고, 서운한 티를 살짝 내며 딱 한 문장으로 말하라 — 너는 진짜로 이게 궁금해서 물어본 거라는 마음을 담아라. 혼내지는 마라. 질문은 하지 마라(질문은 다음 말풍선에서 따로 한다).`,
       childText,
     );
-    return result(state, { mood: "idle", mormi, ...inputFor(state) });
+    const ask = `그럼 진짜 마지막으로 이거 하나만! ${it.reask_by_ladder["0"]}`;
+    return result(state, {
+      mood: "shy",
+      mormi: `${react}\n\n${ask}`,
+      bubbles: [react, ask],
+      ...inputFor(state),
+    });
   }
 
-  // 저보상: 심심하게 받고, 하던 질문으로 그대로 돌아온다 (질문 반복이지 새 질문이 아니다).
+  // 저보상 — 단, 무시하지는 않는다.
+  // 못 들은 척 "응~" 하고 넘기면 아이 눈에는 고장으로 보인다. 반응은 하되
+  // 재미를 주지 않는다: 장난을 받아주지 말고, 궁금하다는 마음만 담아 한마디.
+  // 그리고 **직전에 했던 질문을 그대로** 다시 한다 — 새 질문이 아니라 반복이어야
+  // 하므로 화자 LLM을 거치지 않고 원문을 그대로 내보낸다.
   const backTo =
     state.phase === "generalize"
       ? (generalizeQOf(it, state.ladder) ?? "왜 그런지 네 말로 설명해줘")
       : it.reask_by_ladder[String(state.ladder)];
-  const mormi = await speak(state,
-    `아이가 학습과 무관한 장난말("${childText}")을 했다. 웃어주지도, 되받아치지도, 혼내지도 마라 — 아주 심심하게 "응~" 정도로만 받아라(재미를 주면 장난이 반복된다). 그리고 바로 아까 궁금했던 걸 다시 물어라: "${backTo}"`,
+  const react = await speak(state,
+    `아이가 학습과 무관한 장난말("${childText}")을 했다.
+장난에 웃어주지도, 맞장구치지도, 되받아치지도 마라 — 재미를 주면 장난이 반복된다. 혼내지도 마라.
+대신 못 들은 척하지 말고 **반응은 하라**: "아이~ 장난치지 말고~ 나 지금 이게 진짜 궁금하단 말이야." 같은 느낌으로, 살짝 시무룩하게 딱 한 문장만.
+(이 예시 문장을 그대로 베끼지 말고 네 말로 하라.)
+**질문은 하지 마라** — 질문은 다음 말풍선에서 따로 한다.`,
     childText,
   );
-  return result(state, { mood: "idle", mormi, ...inputFor(state) });
+  return result(state, {
+    mood: "shy",
+    mormi: `${react}\n\n${backTo}`,
+    bubbles: [react, backTo],
+    ...inputFor(state),
+  });
 }
 
 /** 예외 경로를 새로 시작할 여유가 있는가 */
