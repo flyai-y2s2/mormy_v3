@@ -64,6 +64,38 @@ export async function callClaude(role: ClaudeRole, prompt: string): Promise<stri
 }
 
 /**
+ * 모르미 발화를 토큰 단위로 흘려보내는 호출.
+ *
+ * 아이는 5초 넘게 "생각하는 중…"을 못 기다린다. 총 소요는 같아도
+ * 첫 글자가 1~2초 안에 뜨면 기다림이 아니라 '말하는 중'이 된다.
+ * onToken 이 실패해도(연결 끊김 등) 본문 생성은 계속되게 둔다 —
+ * 상태 머신은 완성된 발화를 받아야 세션을 정상적으로 닫을 수 있다.
+ */
+export async function callClaudeStream(
+  role: ClaudeRole,
+  prompt: string,
+  onToken: (chunk: string) => void,
+): Promise<string> {
+  const { model, effort, maxTokens } = CONFIG[role];
+  const stream = client.messages.stream({
+    model,
+    max_tokens: maxTokens,
+    ...(effort ? { output_config: { effort } } : {}),
+    messages: [{ role: "user", content: prompt }],
+  });
+  stream.on("text", (chunk) => {
+    try {
+      onToken(chunk);
+    } catch {
+      /* 화면 전송 실패는 발화 생성을 막지 않는다 */
+    }
+  });
+  const message = await stream.finalMessage();
+  guard(message, role);
+  return textOf(message);
+}
+
+/**
  * 스키마에 맞는 JSON을 받는 호출 (발화 분류).
  * 구조화 출력을 쓰면 응답이 스키마를 만족하도록 강제되므로,
  * 코드 펜스를 벗겨내거나 파싱 실패를 처리할 필요가 없다.

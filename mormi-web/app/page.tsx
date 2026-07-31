@@ -50,6 +50,10 @@ interface Turn {
   starNote?: string;
   cover?: string;
   mormiName?: string;
+  bubbles?: string[];
+  /** 서버가 되돌려준 세션 상태 — 다음 요청에 그대로 실어 보낸다 (서버리스 대응) */
+  state?: unknown;
+  profile?: unknown;
   pastNotes?: { text: string; day: number; coauthored?: boolean }[];
   deskCards?: string[];
   prepVisual?: { compare: number[]; shade?: number; shades?: number[] };
@@ -67,6 +71,25 @@ const COVER_ICON: Record<string, string> = {
   고양이: "🐱",
 };
 
+/** 모르미 말풍선. caret 은 아직 말하는 중이라는 표시 */
+function Bubble({ text, caret }: { text: string; caret?: boolean }) {
+  return (
+    <div className="flex justify-start">
+      <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm border-2 border-[#e0c69a] bg-[#fffdf6] px-4 py-2.5 text-[15px] leading-relaxed text-stone-800">
+        {text}
+        {caret && (
+          <span
+            className="ml-0.5 inline-block text-[#c9a06a]"
+            style={{ animation: "hand-caret .8s infinite" }}
+          >
+            ▍
+          </span>
+        )}
+      </p>
+    </div>
+  );
+}
+
 export default function Home() {
   const [sid, setSid] = useState<string | null>(null);
   const [turn, setTurn] = useState<Turn | null>(null);
@@ -82,9 +105,15 @@ export default function Home() {
   const [childSaid, setChildSaid] = useState<string | null>(null);
   const [past, setPast] = useState<{ text: string; day: number; coauthored?: boolean }[]>([]);
   const [deskCards, setDeskCards] = useState<string[]>(["1/3", "1/4"]);
+  // 아직 생성 중인 모르미 발화 (SSE 로 들어오는 중)
+  const [streaming, setStreaming] = useState<string | null>(null);
+  // 서버 요청이 실패했는가 — 조용히 넘어가지 않고 아이에게 알린다
+  const [failed, setFailed] = useState(false);
   const [prepVisual, setPrepVisual] =
     useState<Turn["prepVisual"]>(undefined);
   const timer = useRef<number | null>(null);
+  // 세션 상태는 화면이 보관한다 — 서버리스에서는 서버 메모리가 요청마다 비워진다.
+  const stateRef = useRef<unknown>(null);
 
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
 
@@ -94,17 +123,75 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * 서버에 한 턴을 요청한다.
+   *
+   * 모르미 발화는 SSE로 흘러들어와 완성되기 전부터 화면에 뜬다 — 아이는
+   * 5초짜리 "생각하는 중…"을 기다려주지 않는다.
+   * 실패하면 반드시 화면에 알린다. 조용히 넘어가면 아이 눈에는 모르미가
+   * 같은 질문만 반복하는 것으로 보인다.
+   */
   async function post(body: Record<string, unknown>) {
     setBusy(true);
-    const res = await fetch("/api/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: sid, ...body }),
-    });
-    const data: Turn & { sessionId?: string } = await res.json();
+    setStreaming(null);
+    setFailed(false);
+
+    let data: (Turn & { sessionId?: string }) | null = null;
+    try {
+      const res = await fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: sid, state: stateRef.current, stream: true, ...body }),
+      });
+
+      if (!res.body) throw new Error("no body");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let acc = "";
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let i: number;
+        while ((i = buf.indexOf("\n\n")) >= 0) {
+          const raw = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          const ev = /event: (.*)/.exec(raw)?.[1];
+          const payload = /data: ([\s\S]*)/.exec(raw)?.[1];
+          if (!ev || payload === undefined) continue;
+          if (ev === "token") {
+            acc += JSON.parse(payload) as string;
+            setStreaming(acc);
+          } else if (ev === "done") {
+            data = JSON.parse(payload) as Turn;
+          } else if (ev === "error") {
+            throw new Error(JSON.parse(payload) as string);
+          }
+        }
+      }
+      if (!data) throw new Error("no done event");
+    } catch {
+      // 아이에게는 모르미의 말로 알리고, 다시 말해볼 수 있게 둔다.
+      setBusy(false);
+      setStreaming(null);
+      setFailed(true);
+      return;
+    }
+
     setBusy(false);
-    if (data.error) return;
+    setStreaming(null);
     if (data.sessionId) setSid(data.sessionId);
+    if (data.state) stateRef.current = data.state;
+    // 프로필은 브라우저가 보관한다 — 다음 방문(이틀째)에 서버로 되돌려준다.
+    if (data.profile) {
+      try {
+        localStorage.setItem("mormi.profile", JSON.stringify(data.profile));
+      } catch {
+        /* 저장 불가 환경 — 이번 세션 안에서는 정상 동작한다 */
+      }
+    }
     setTurn(data);
 
     // 시각 반증·사전 카드는 그 턴에만 유효한 연출이다. 매 턴 비우고 지시받은 것만 켠다.
@@ -142,13 +229,23 @@ export default function Home() {
     setStamped(false);
     setChildSaid(null);
     setPast([]);
+    setStreaming(null);
+    setFailed(false);
     setSid(null);
+    let saved: unknown = null;
+    try {
+      const raw = localStorage.getItem("mormi.profile");
+      if (raw) saved = JSON.parse(raw);
+    } catch {
+      /* 저장소를 못 읽으면 첫 만남부터 시작한다 */
+    }
     const res = await fetch("/api/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "start" }),
+      body: JSON.stringify({ action: "start", profile: saved }),
     });
     const data: Turn & { sessionId: string } = await res.json();
+    stateRef.current = data.state ?? null;
     setSid(data.sessionId);
     setTurn(data);
     if (data.pastNotes) setPast(data.pastNotes);
@@ -179,6 +276,12 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "reset" }),
     });
+    try {
+      localStorage.removeItem("mormi.profile");
+    } catch {
+      /* 무시 */
+    }
+    stateRef.current = null;
     await newSession();
   }
 
@@ -250,20 +353,41 @@ export default function Home() {
               </p>
             </div>
           )}
-          {/* 응답 대기 중에는 이전 발화를 숨긴다 — 아이 말 아래 지난 말이 남으면 순서가 뒤바뀐 것으로 읽힌다 */}
-          {turn?.mormi && !busy && (
-            <div className="flex justify-start">
-              <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm border-2 border-[#e0c69a] bg-[#fffdf6] px-4 py-2.5 text-[15px] leading-relaxed text-stone-800">
-                {turn.mormi}
-              </p>
-            </div>
+          {/*
+            생성 중이면 지금까지 온 글자를 그대로 보여준다 (스트리밍).
+            끝났으면 서버가 나눠준 말풍선들을 각각 띄운다 — 화제가 바뀌는
+            자리를 줄바꿈으로 이으면 아이가 한 덩어리로 읽는다.
+            응답 대기 중 이전 발화를 숨기는 이유: 아이 말 아래 지난 말이
+            남으면 순서가 뒤바뀐 것으로 읽힌다.
+          */}
+          {streaming !== null ? (
+            <Bubble text={streaming} caret />
+          ) : (
+            !busy &&
+            (turn?.bubbles ?? (turn?.mormi ? [turn.mormi] : [])).map((b, i) => (
+              <Bubble key={i} text={b} />
+            ))
           )}
           {dictCard && scene !== "dictionary" && (
             <p className="mx-auto max-w-md rounded-xl border-2 border-[#c3aede] bg-[#f7f2fd] px-4 py-2.5 text-[13px] text-[#5c4a7d]">
               궁금해 사전 — {dictCard}
             </p>
           )}
-          {busy && (
+          {/* 실패를 조용히 넘기지 않는다 — 아이 눈에는 모르미가 같은 질문만 반복하는 것으로 보인다 */}
+          {failed && (
+            <>
+              <Bubble text="어… 나 갑자기 멍해졌어. 방금 거 한 번만 다시 말해줄래?" />
+              <div className="flex justify-start">
+                <button
+                  onClick={() => childSaid && say(childSaid, childSaid === "모르겠어…")}
+                  className="rounded-full border-2 border-[#c9a06a] px-4 py-1.5 text-[13px] text-stone-600 hover:bg-[#fffaf0]"
+                >
+                  다시 보내기
+                </button>
+              </div>
+            </>
+          )}
+          {busy && streaming === null && (
             <p className="text-sm text-stone-400">{name}가 생각하는 중…</p>
           )}
         </div>

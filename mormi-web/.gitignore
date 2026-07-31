@@ -44,3 +44,6 @@ next-env.d.ts
 
 # 아이 프로필 (로컬 상태 — 커밋하지 않는다)
 /data
+
+# Vercel CLI 로컬 링크
+.vercel

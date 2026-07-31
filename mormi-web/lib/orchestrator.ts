@@ -1,4 +1,4 @@
-import { callClaude, callClaudeJson } from "./claude";
+import { callClaude, callClaudeJson, callClaudeStream } from "./claude";
 import curriculum from "@/content/fractions.json";
 import { prepCard, lookupDictionary } from "./curriculum";
 import {
@@ -70,6 +70,12 @@ export interface TurnResult {
   cover?: string;
   /** 아이가 지어준 이름 — 화면의 모든 문구가 이 이름을 쓴다 */
   mormiName?: string;
+  /**
+   * 한 턴에 모르미가 말풍선을 두 개 이상 띄울 때 (예: 고마움 인사 → 숙제 부탁).
+   * 화제가 바뀌는 자리는 줄바꿈이 아니라 말풍선을 나눠야 아이가 따라온다.
+   * 없으면 화면은 `mormi` 하나만 그린다.
+   */
+  bubbles?: string[];
   /** 지난 세션에 적힌 별노트 (세션 시작 시 1회) */
   pastNotes?: { text: string; day: number; coauthored?: boolean }[];
   /** 책상 위에 놓인 분수 카드 두 장 — 지금 다루는 두 분수 */
@@ -209,6 +215,11 @@ export interface SessionState {
   onboardStep: number;
   /** 직전 모르미 발화 — 화자가 대화 흐름을 이어가기 위한 최소 문맥 */
   lastMormi: string;
+  /**
+   * 이번 요청에서 모르미 발화를 토큰 단위로 화면에 흘려보낼 통로.
+   * 요청 처리 중에만 붙였다 떼며, 세션에 저장되지 않는다(직렬화 대상 아님).
+   */
+  sink?: (chunk: string) => void;
   /** 일반화 되물음에서 맞장구("응")를 한 번 되물었는가 */
   generalizeReasked: boolean;
   /** 거부 시 내준 마중물 — 아이가 완성하면 노트에는 stem+답을 합쳐 싣는다 */
@@ -229,6 +240,25 @@ const sessions: Map<string, SessionState> =
 
 export function getSession(id: string): SessionState | undefined {
   return sessions.get(id);
+}
+
+/**
+ * 화면이 되돌려준 상태로 세션을 복원한다.
+ *
+ * 서버리스(Vercel)에서는 요청마다 다른 인스턴스가 뜰 수 있어 위의 Map 이
+ * 비어 있다. 세션이 없다고 404 를 내면 아이 화면은 같은 질문에 멈춘다.
+ * 그래서 매 응답에 상태를 실어 보내고, 다음 요청에서 그대로 돌려받아 잇는다.
+ *
+ * 프로토타입 전제: 화면이 상태를 조작할 수 있다. 점수·평가가 없는 서비스라
+ * 조작해서 얻을 것이 없으므로 감수한다. 다중 사용자로 가면 서버 저장소로 옮긴다.
+ */
+export function reviveSession(raw: unknown): SessionState | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const s = raw as SessionState;
+  if (typeof s.id !== "string" || typeof s.scene !== "string") return undefined;
+  delete s.sink; // 전송 통로는 이번 요청에서 새로 붙인다
+  sessions.set(s.id, s);
+  return s;
 }
 
 function elapsed(state: SessionState): number {
@@ -287,7 +317,10 @@ function result(
 
 // ---------- 씬 진행 (LLM 없음 — 대본이 정해진 구간) ----------
 
-export function startSession(): { sessionId: string; turn: TurnResult } {
+export function startSession(incoming?: Profile | null): {
+  sessionId: string;
+  turn: TurnResult;
+} {
   const state: SessionState = {
     id: Math.random().toString(36).slice(2, 10),
     scene: "room",
@@ -313,7 +346,8 @@ export function startSession(): { sessionId: string; turn: TurnResult } {
     generalizeReasked: false,
     generalizeStem: null,
     offTopicCount: 0,
-    profile: loadProfile() ?? newProfile(),
+    // 화면이 들고 있던 프로필을 우선한다 — 서버리스에는 저장된 파일이 없다.
+    profile: incoming ?? loadProfile() ?? newProfile(),
     report: [],
     startedAt: Date.now(),
   };
@@ -704,7 +738,11 @@ async function speak(
 지시: ${directive}
 
 직전 대화에서 자연스럽게 이어지는 말이어야 한다. 모르미의 발화만 출력하라 (따옴표·설명 없이).`;
-  return (await callClaude("speaker", prompt)).trim();
+  // sink 가 붙어 있으면 토큰을 흘려보내며 생성한다 (첫 글자를 빨리 띄우기 위해).
+  const text = state.sink
+    ? await callClaudeStream("speaker", prompt, state.sink)
+    : await callClaude("speaker", prompt);
+  return text.trim();
 }
 
 // ---------- 가르치기 사이클 (상태 전이) ----------
@@ -1159,6 +1197,8 @@ export async function finishTeaching(
   return result(state, {
     mood: recaps.length > 0 ? "happy" : "shy",
     mormi: carry ? `${carry.mormi}\n\n${summary}` : summary,
+    // 깨달음과 총정리는 화제가 다르다 — 말풍선을 나눈다.
+    bubbles: carry ? [carry.mormi, summary] : undefined,
     effects: carry?.effects ?? [],
     input: "stamp",
     starNote: carry?.starNote,
@@ -1206,6 +1246,8 @@ function beginHomework(
   return result(state, {
     mood: "confident",
     mormi: carry ? `${carry.mormi}\n\n${ask}` : ask,
+    // 고마움 인사와 숙제 부탁은 화제가 다르다 — 말풍선을 나눈다.
+    bubbles: carry ? [carry.mormi, ask] : undefined,
     effects: carry?.effects ?? [],
     input: "choices",
     choices: hw.choices,

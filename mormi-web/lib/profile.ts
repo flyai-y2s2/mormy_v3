@@ -30,6 +30,9 @@ export interface Profile {
   learnedIds: string[];
 }
 
+// 서버리스(Vercel)에서는 배포 디렉터리가 읽기 전용이고 인스턴스도 요청마다 바뀐다.
+// 그래서 이 파일 저장은 '로컬 개발 편의' 용도일 뿐, 프로필의 진짜 보관처는
+// 브라우저(localStorage)다 — 화면이 프로필을 들고 다니며 매 요청에 실어 보낸다.
 const DIR = path.join(process.cwd(), "data");
 const FILE = path.join(DIR, "profile.json");
 
@@ -43,12 +46,21 @@ export function loadProfile(): Profile | null {
 }
 
 export function saveProfile(p: Profile): void {
-  mkdirSync(DIR, { recursive: true });
-  writeFileSync(FILE, JSON.stringify(p, null, 2), "utf-8");
+  // 읽기 전용 파일시스템에서 던지면 세션이 통째로 500 이 된다. 저장은 최선 노력이다.
+  try {
+    mkdirSync(DIR, { recursive: true });
+    writeFileSync(FILE, JSON.stringify(p, null, 2), "utf-8");
+  } catch {
+    /* 서버리스 환경 — 프로필은 화면이 보관한다 */
+  }
 }
 
 export function resetProfile(): void {
-  if (existsSync(FILE)) writeFileSync(FILE, "null", "utf-8");
+  try {
+    if (existsSync(FILE)) writeFileSync(FILE, "null", "utf-8");
+  } catch {
+    /* 서버리스 환경 — 화면이 자기 쪽 프로필을 지운다 */
+  }
 }
 
 export function newProfile(): Profile {
