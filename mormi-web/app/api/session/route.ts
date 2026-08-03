@@ -57,8 +57,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // 서버 메모리에 없으면 화면이 되돌려준 상태로 복원한다 (서버리스 대응)
-  const state = getSession(body.sessionId) ?? reviveSession(body.state);
+  // 상태의 주인은 화면이다 — 화면이 보낸 상태를 서버 메모리보다 우선한다.
+  // 화면은 '성공한 턴'의 상태만 보관하므로, 응답이 중간에 실패한 턴을
+  // 다시 보내도 깨끗한 기저에서 재실행된다. 서버 메모리를 우선하면
+  // 실패한 턴이 이미 변이시킨 상태(소진된 예산·내려간 사다리) 위에서
+  // 같은 턴이 한 번 더 실행되어, 몇 번의 재시도만으로 세션이 닫혀 버린다.
+  const state = reviveSession(body.state) ?? getSession(body.sessionId);
   if (!state) {
     return NextResponse.json({ error: "세션이 없습니다" }, { status: 404 });
   }
