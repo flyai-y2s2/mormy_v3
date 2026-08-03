@@ -28,6 +28,11 @@ export function withCopula(name: string): string {
   return hasFinalConsonant(name) ? `${name}이야` : `${name}야`;
 }
 
+/** 말 + 목적격 조사. 받침이 있으면 "을", 없으면 "를". */
+export function withObject(word: string): string {
+  return hasFinalConsonant(word) ? `${word}을` : `${word}를`;
+}
+
 // ---------- 이름 잘못 듣기 ----------
 
 const V_SWAP: Record<number, number> = {

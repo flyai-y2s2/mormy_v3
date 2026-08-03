@@ -5,6 +5,7 @@ import { Stage } from "@/components/Stage";
 import { ClosedBook, OpenBook } from "@/components/DictionaryBook";
 import { FractionPizza, FractionCards } from "@/components/FractionPizza";
 import { StarNote } from "@/components/StarNote";
+import { withObject } from "@/lib/korean";
 import type { Mood } from "@/components/Mormi";
 
 type Scene =
@@ -428,7 +429,12 @@ export default function Home() {
               {turn?.choices?.map((c) => (
                 <button
                   key={c}
-                  onClick={() => post({ action: "selectUnit", concept: c })}
+                  onClick={() => {
+                    // 아이 말풍선을 이번 선택으로 갱신한다. 안 하면 직전 단계의
+                    // 대답("모르미")이 남아 모르미 반응과 어긋나 보인다.
+                    setChildSaid(`오늘은 ${withObject(c)} 배웠어!`);
+                    void post({ action: "selectUnit", concept: c });
+                  }}
                   disabled={busy}
                   className="flex-1 rounded-xl border-2 border-[#c9a06a] bg-white px-4 py-3.5 text-[15px] text-stone-700 hover:bg-[#fffaf0]"
                 >
