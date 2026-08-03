@@ -106,3 +106,84 @@ body {
 .font-hand {
   font-family: var(--font-hand), cursive;
 }
+
+/*
+ * 별노트 속지 — 리갈패드처럼 가로 괘선 + 왼쪽 빨간 세로선.
+ * 글씨 가독성을 해치지 않도록 1px, 저채도·저불투명도로 아주 연하게.
+ * 가로선 간격 26px 는 항목 텍스트의 line-height 와 맞춘 값이다.
+ */
+.paper-ruled {
+  background-image:
+    linear-gradient(
+      to right,
+      transparent 30px,
+      rgba(224, 106, 90, 0.3) 30px,
+      rgba(224, 106, 90, 0.3) 31px,
+      transparent 31px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 25px,
+      rgba(139, 166, 205, 0.22) 25px,
+      rgba(139, 166, 205, 0.22) 26px
+    );
+}
+
+/* 모르미가 품에서 노트를 꺼내는 순간 — 위(가슴께)에서 책상으로 톡 내려놓는다 */
+@keyframes note-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -46px) scale(0.4) rotate(-14deg);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, 4px) scale(1.06) rotate(3deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1) rotate(-2deg);
+  }
+}
+
+/* 끄적끄적 — 연필이 줄을 따라 왕복한다 */
+@keyframes scribble {
+  0% {
+    transform: translate(0, 0) rotate(32deg);
+  }
+  25% {
+    transform: translate(7px, 1.5px) rotate(36deg);
+  }
+  50% {
+    transform: translate(14px, 0) rotate(30deg);
+  }
+  75% {
+    transform: translate(21px, 1.5px) rotate(35deg);
+  }
+  100% {
+    transform: translate(28px, 0) rotate(32deg);
+  }
+}
+
+/* 잉크가 왼쪽에서 오른쪽으로 차오른다 */
+@keyframes ink-line {
+  0% {
+    width: 0;
+  }
+  70% {
+    width: 100%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+.anim-note-pop {
+  animation: note-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.anim-scribble {
+  animation: scribble 0.9s ease-in-out infinite alternate;
+}
+.anim-ink {
+  animation: ink-line 1.8s ease-out infinite;
+}

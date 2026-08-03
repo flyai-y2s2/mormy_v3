@@ -27,34 +27,40 @@ export function StarNote({
   // "네가"보다 이름으로 불러야 노트가 '내 것'으로 남는다. 조사는 받침으로 고른다.
   const by = childName ? withSubject(childName) : "네가";
   return (
-    <div className="rounded-2xl border-2 border-[#d9b98a] bg-[#fffdf5] p-4">
-      <h2 className="mb-2 flex items-center gap-1.5 text-sm font-medium text-[#8a6d3f]">
+    <div className="overflow-hidden rounded-2xl border-2 border-[#d9b98a] bg-[#fffdf5]">
+      <h2 className="flex items-center gap-1.5 px-4 pb-2 pt-4 text-sm font-medium text-[#8a6d3f]">
         <span className="text-base leading-none">{COVER[cover] ?? <Star />}</span>{" "}
         별노트
       </h2>
 
-      {notes.length === 0 && past.length === 0 && !typing && (
-        <p className="text-xs text-stone-400">
-          네가 가르쳐준 말이 여기에 적혀요
-        </p>
-      )}
+      {/*
+        속지 — 리갈패드. 가로 괘선 간격(26px)과 글줄(leading-[26px])을 맞추고,
+        빨간 세로선(30px) 오른쪽에서 글이 시작되도록 padding 을 둔다.
+      */}
+      <div className="paper-ruled min-h-[104px] pb-4 pl-[38px] pr-4">
+        {notes.length === 0 && past.length === 0 && !typing && (
+          <p className="pt-[3px] text-xs leading-[26px] text-stone-400">
+            네가 가르쳐준 말이 여기에 적혀요
+          </p>
+        )}
 
-      <ul className="space-y-3">
-        {past.map((n, i) => (
-          <Entry
-            key={`p${i}`}
-            text={n.text}
-            day={n.day}
-            coauthored={n.coauthored}
-            by={by}
-            faded
-          />
-        ))}
-        {notes.map((n, i) => (
-          <Entry key={i} text={n.text} coauthored={n.coauthored} by={by} />
-        ))}
-        {typing && <Entry text={typing} animate by={by} />}
-      </ul>
+        <ul>
+          {past.map((n, i) => (
+            <Entry
+              key={`p${i}`}
+              text={n.text}
+              day={n.day}
+              coauthored={n.coauthored}
+              by={by}
+              faded
+            />
+          ))}
+          {notes.map((n, i) => (
+            <Entry key={i} text={n.text} coauthored={n.coauthored} by={by} />
+          ))}
+          {typing && <Entry text={typing} animate by={by} />}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -76,18 +82,19 @@ function Entry({
   by?: string;
 }) {
   const shown = useTyped(text, animate);
+  // 글줄을 괘선(26px)에 앉힌다 — 구분선 없이도 리갈패드 줄이 항목을 나눠 준다.
   return (
-    <li className="border-b border-dashed border-[#e3d3b3] pb-2 last:border-0">
+    <li>
       <p
-        className={`font-hand text-[19px] leading-snug ${faded ? "text-[#8b96ab]" : "text-[#3f4d68]"}`}
-        style={{ transform: "rotate(-0.6deg)" }}
+        className={`font-hand text-[20px] leading-[26px] ${faded ? "text-[#7e8aa2]" : "text-[#26355c]"}`}
+        style={{ transform: "rotate(-0.4deg)" }}
       >
         {shown}
         {animate && shown.length < text.length && (
           <span style={{ animation: "hand-caret .8s infinite" }}>|</span>
         )}
       </p>
-      <p className="mt-0.5 font-hand text-[15px] text-[#b08b52]">
+      <p className="font-hand text-[15px] leading-[26px] text-[#8f6d33]">
         — {coauthored ? "같이 완성함" : `${by} 알려줌`}{day ? ` (${day}일째)` : ""}
       </p>
     </li>

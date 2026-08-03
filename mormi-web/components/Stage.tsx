@@ -11,10 +11,16 @@ import { Mormi, type Mood } from "./Mormi";
 export function Stage({
   atDesk,
   mood = "idle",
+  writing = false,
+  noteIcon = "⭐",
   children,
 }: {
   atDesk: boolean;
   mood?: Mood;
+  /** 별노트에 적는 중 — 모르미가 품에서 노트를 꺼내 끄적인다 */
+  writing?: boolean;
+  /** 노트 표지 그림 — 첫 만남에서 아이가 고른 것 */
+  noteIcon?: string;
   children?: React.ReactNode;
 }) {
   return (
@@ -51,6 +57,77 @@ export function Stage({
         <div className="h-3 bg-[#c99a5c]" />
         <div className="relative flex h-[86px] items-center justify-center gap-4 bg-[#e0b07a] px-6">
           {children}
+        </div>
+      </div>
+
+      {/* 별노트에 적는 중 — 모르미 가슴께에서 나와 책상(또는 바닥) 위에 놓인다 */}
+      {writing && (
+        <WritingNote
+          icon={noteIcon}
+          style={
+            atDesk
+              ? { left: "36%", bottom: 44 } // 책상 중앙의 사전과 겹치지 않게 왼쪽
+              : { left: "30%", bottom: 96 }
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * 끄적끄적 적히는 중인 별노트.
+ * 표지 그림(아이가 고른 것)이 모서리에 보이고, 연필이 줄을 따라 왕복하며
+ * 잉크 선이 차오른다. 실제 문장은 오른쪽 별노트 패널에 동시에 타이핑된다.
+ */
+function WritingNote({
+  icon,
+  style,
+}: {
+  icon: string;
+  style: React.CSSProperties;
+}) {
+  return (
+    <div className="anim-note-pop absolute z-10" style={style}>
+      <div
+        className="relative h-[58px] w-[84px] rounded-md border-2 border-[#d9b98a] bg-[#fffdf5] shadow-md"
+        style={{ transform: "rotate(-2deg)" }}
+      >
+        {/* 스프링 제본 */}
+        <div className="absolute -top-[5px] left-0 flex w-full justify-evenly">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <span key={i} className="h-[8px] w-[3px] rounded-full bg-[#b08b52]" />
+          ))}
+        </div>
+        {/* 표지 그림 — 아이가 고른 것 */}
+        <span className="absolute -left-2 -top-3 text-[15px] drop-shadow-sm">
+          {icon}
+        </span>
+        {/* 차오르는 잉크 선 */}
+        <div className="absolute left-2.5 right-2.5 top-[16px] space-y-[9px]">
+          {[0, 0.6, 1.2].map((delay) => (
+            <div
+              key={delay}
+              className="anim-ink h-[2px] rounded bg-[#8fa3c4]/70"
+              style={{ animationDelay: `${delay}s` }}
+            />
+          ))}
+        </div>
+        {/* 연필 */}
+        <div
+          className="anim-scribble absolute bottom-[10px] left-[14px]"
+          style={{ transformOrigin: "bottom left" }}
+        >
+          <div className="h-[26px] w-[5px] rounded-t-sm bg-[#f2b544]">
+            <div
+              className="absolute -bottom-[6px] left-0 h-0 w-0"
+              style={{
+                borderLeft: "2.5px solid transparent",
+                borderRight: "2.5px solid transparent",
+                borderTop: "7px solid #6b5537",
+              }}
+            />
+          </div>
         </div>
       </div>
     </div>

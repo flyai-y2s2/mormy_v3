@@ -298,7 +298,12 @@ export default function Home() {
       <div className="flex min-h-[560px] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border-2 border-[#e0c69a] bg-white shadow-sm">
         {/* 무대 — 방과 책상, 모르미 */}
         <div className="relative">
-          <Stage atDesk={atDesk} mood={turn?.mood ?? "idle"}>
+          <Stage
+            atDesk={atDesk}
+            mood={turn?.mood ?? "idle"}
+            writing={typing !== null}
+            noteIcon={COVER_ICON[turn?.cover ?? ""] ?? "⭐"}
+          >
             {scene === "teaching" && !visual && (
               <>
                 <ClosedBook />
