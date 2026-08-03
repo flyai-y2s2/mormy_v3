@@ -103,8 +103,15 @@ body {
 .anim-stamp {
   animation: stamp-press 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
+/*
+ * 손글씨 폰트는 굵기가 하나뿐이라 font-weight 로는 두꺼워지지 않는다.
+ * 획을 따라 얇은 테두리를 덧대 굵기를 만든다. paint-order 로 테두리를
+ * 먼저 칠해야 안쪽이 잠식되지 않아 글자 속이 뭉개지지 않는다.
+ */
 .font-hand {
   font-family: var(--font-hand), cursive;
+  -webkit-text-stroke: 0.5px currentColor;
+  paint-order: stroke fill;
 }
 
 /*

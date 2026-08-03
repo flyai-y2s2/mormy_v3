@@ -86,7 +86,7 @@ function Entry({
   return (
     <li>
       <p
-        className={`font-hand text-[20px] leading-[26px] ${faded ? "text-[#7e8aa2]" : "text-[#26355c]"}`}
+        className={`font-hand text-[20px] leading-[26px] ${faded ? "text-[#6a7793]" : "text-[#1e2b4d]"}`}
         style={{ transform: "rotate(-0.4deg)" }}
       >
         {shown}
@@ -94,7 +94,7 @@ function Entry({
           <span style={{ animation: "hand-caret .8s infinite" }}>|</span>
         )}
       </p>
-      <p className="font-hand text-[15px] leading-[26px] text-[#8f6d33]">
+      <p className="font-hand text-[15px] leading-[26px] text-[#856226]">
         —{" "}
         {coauthored
           ? `${name ? withCompanion(name) : "너랑"} 같이 공부함`
