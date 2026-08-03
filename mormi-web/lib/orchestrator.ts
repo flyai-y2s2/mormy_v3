@@ -82,6 +82,12 @@ export interface TurnResult {
   pastNotes?: { text: string; day: number; coauthored?: boolean }[];
   /** 책상 위에 놓인 분수 카드 두 장 — 지금 다루는 두 분수 */
   deskCards?: string[];
+  /**
+   * 사전 문장 따라 쓰기(읽기) 중이면 그 대상 문장.
+   * 안내 문구("따라 읽어볼까?" / "따라 써보자")는 화면이 입력 방식에 맞춰 고른다 —
+   * 서버는 음성 모드인지 채팅 모드인지 모른다(STT 도입 시 서버 무변경).
+   */
+  dictation?: string;
   /** 궁금해 사전 오른쪽 그림 — 지금 개념의 피자 (scene === "dictionary") */
   prepVisual?: { compare: number[]; shade?: number; shades?: number[] };
   report: ReportEntry[]; // 아이 화면에는 절대 노출하지 않는다
@@ -135,7 +141,10 @@ const items = curriculum.items as Item[];
 
 // ---------- 예산 (3분 목표 / 5분 상한) ----------
 
-const HARD_LIMIT_SEC = 300;
+// 목표는 3분이지만, 예외 경로(사다리 하향 → 힌트 → 사전 → 따라 읽기)를 끝까지
+// 밟는 아이는 그보다 오래 걸린다. 중간에 잘라 이월시키느니 끝까지 데려가
+// 정답으로 닫는 편이 낫다고 보아 상한을 7분으로 둔다.
+const HARD_LIMIT_SEC = 420;
 /** 예외 경로는 세션당 1회. 두 번째 막힘은 즉시 긍정적 이월. */
 const EXCEPTION_BUDGET = 1;
 
@@ -187,6 +196,7 @@ type Phase =
   | "reteach"
   | "generalize" // 답은 맞췄고, 일반 규칙을 꺼내도록 되묻는 중
   | "homework" // 숙제 검사 — 시험지 형식으로 전이를 확인하는 중
+  | "dictation" // 사전 문장을 아이가 직접 읽어(써서) 모르미에게 알려주는 중
   | "continue" // 한 개념을 끝내고 계속할지 고르는 중
   | "closing"
   | "done";
@@ -209,6 +219,9 @@ export interface SessionState {
   homeworkAsked: boolean; // 숙제 검사는 세션당 1회
   homeworkTries: number;
   homeworkItemId: string | null; // 숙제 검사 중인 개념 (직전에 가르친 것)
+  /** 아이가 따라 읽을(쓸) 사전 문장. 이월 직전의 마지막 경로 */
+  dictationText: string | null;
+  dictationTries: number;
   taughtRecaps: string[]; // 아이가 (재)가르쳐 확정된 개념들 — 총정리의 유일한 출처
   learnedIds: string[]; // 오늘 끝낸 개념
   carriedIds: string[]; // 오늘 이월한 개념
@@ -343,6 +356,8 @@ export function startSession(
     homeworkAsked: false,
     homeworkTries: 0,
     homeworkItemId: null,
+    dictationText: null,
+    dictationTries: 0,
     taughtRecaps: [],
     learnedIds: [],
     carriedIds: [],
@@ -783,6 +798,11 @@ export async function processTurn(
     return await onHomeworkAnswer(state, childText, dontKnow);
   }
 
+  // 사전 따라 쓰기도 6종 발화 분류가 아니라 표적 문장과의 대조 문제다.
+  if (state.phase === "dictation") {
+    return await onDictationAnswer(state, childText, dontKnow);
+  }
+
   // 일반화 되물음의 맞장구("응")·거부("싫어")는 분류기 없이 한 번만 다르게 청한다.
   // 맞장구 → 아이의 말로 설명 재청. 거부 → 조르지 않되, 마중물로 부담을 낮춰
   // 뒤만 이어달라고 청한다 (거부는 대부분 '빈 문장이 너무 크다'는 뜻이다).
@@ -997,6 +1017,8 @@ function beginItem(state: SessionState, it: Item): void {
   state.partialCount = 0;
   state.answerNote = null;
   state.generalizedNote = null;
+  state.dictationText = null;
+  state.dictationTries = 0;
   state.generalizeReasked = false;
   state.generalizeStem = null;
   state.exceptionCount = 0;
@@ -1464,8 +1486,233 @@ async function onStuck(
  * A4 긍정적 이월 — 해당 개념은 복창에서 제외한다.
  * 모르는 채로, 또는 오개념 상태로는 절대 정리하지 않는다.
  */
-async function carryOver(state: SessionState, childText: string): Promise<TurnResult> {
+// ---------- 사전 문장 따라 읽기 (이월 직전의 마지막 경로) ----------
+
+/** 맞춤법·띄어쓰기·문장부호 차이를 무시하기 위한 정규화 */
+function normalizeKo(s: string): string {
+  return s.replace(/[\s.,!?~"'·…()]/g, "");
+}
+
+/** 편집 거리 (짧은 문장이라 O(mn) 으로 충분하다) */
+function editDistance(a: string, b: string): number {
+  const prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j];
+      prev[j] = Math.min(
+        prev[j] + 1,
+        prev[j - 1] + 1,
+        diag + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+      diag = tmp;
+    }
+  }
+  return prev[b.length];
+}
+
+/**
+ * 따라 쓴 문장이 표적과 통하는가 — 2층 판정.
+ *
+ * 1층(결정형): 정규화 후 편집 거리. 맞춤법·띄어쓰기가 조금 틀려도 통과시킨다.
+ * 2층(분류기): 1층이 아슬아슬하게 떨어졌을 때만 1회. 어미를 바꿔 읽은 경우
+ *   ("…작아요" → "…작아져")를 구제한다.
+ *
+ * 분류기 6종 라벨을 쓰지 않는 이유: 이건 발화 분류 문제가 아니라 대조 문제다.
+ * 장난 발화는 1층에서 자연히 불일치가 되어 저보상 원칙과도 맞는다.
+ */
+async function matchesDictation(target: string, said: string): Promise<boolean> {
+  const t = normalizeKo(target);
+  const s = normalizeKo(said);
+  if (t.length === 0 || s.length === 0) return false;
+
+  const similarity = 1 - editDistance(t, s) / Math.max(t.length, s.length);
+  if (similarity >= 0.75) return true;
+  // 너무 짧게 답했으면 따라 쓴 것으로 볼 수 없다 (분류기까지 갈 것도 없다)
+  if (s.length < t.length * 0.5) return false;
+
+  const verdict = await callClaudeJson<{ same: boolean }>(
+    "classifier",
+    `아이가 아래 문장을 보고 그대로 따라 읽거나 따라 썼는지 판정하라.
+
+원래 문장: "${target}"
+아이가 쓴 것: "${said}"
+
+맞춤법·띄어쓰기·문장부호가 틀려도, 어미가 바뀌어도(예: "작아요"→"작아져") 상관없다.
+**뜻이 같게 옮겼으면 true**다. 뜻이 반대거나 전혀 다른 말이면 false.
+
+JSON만 출력: {"same": true/false}`,
+    {
+      type: "object",
+      properties: { same: { type: "boolean" } },
+      required: ["same"],
+      additionalProperties: false,
+    },
+  );
+  return verdict.same === true;
+}
+
+/**
+ * 사전 문장을 둘로 나눈다 — 모르미가 앞을 읽고, 아이가 뒤를 잇는다.
+ * 쉼표가 있으면 거기서, 없으면 어절 기준 앞 55% 지점에서 자른다.
+ */
+function splitForCoRead(text: string): { lead: string; tail: string } {
+  const comma = text.indexOf(", ");
+  if (comma > 0 && comma < text.length * 0.7) {
+    return {
+      lead: text.slice(0, comma + 1),
+      tail: text.slice(comma + 2).trim(),
+    };
+  }
+  const words = text.split(" ");
+  const cut = Math.max(1, Math.round(words.length * 0.55));
+  return {
+    lead: words.slice(0, cut).join(" "),
+    tail: words.slice(cut).join(" ").trim(),
+  };
+}
+
+/**
+ * 사전을 펼쳐 봤는데도 막혔다 → 이월하기 전에, 사전 문장을 아이가 직접
+ * 읽어(써서) 모르미에게 알려주게 한다. 끝까지 가르치는 주체는 아이다.
+ *
+ * 지식의 출처는 사전(세계 안의 사물)이고 전달자는 아이이므로
+ * "모르미가 아는 모든 것은 아이에게서 온다"는 원칙과 충돌하지 않는다.
+ */
+async function beginDictation(
+  state: SessionState,
+  childText: string,
+): Promise<TurnResult> {
   const it = item(state);
+  const found = lookupDictionary(it.keywords);
+  const target = found.concept ?? it.correct_recap;
+
+  state.phase = "dictation";
+  state.dictationText = target;
+  state.dictationTries = 0;
+
+  const mormi = await speak(state,
+    `아직도 잘 모르겠다고 솔직하게 말하고, 사전에 적힌 문장을 아이가 소리 내어 읽어(적어) 알려달라고 부탁하라. 예: "그런가…? 나 아직도 좀 헷갈려. 여기 사전에 뭐라고 써 있는지 한 번만 읽어주면 안 될까?" (이 예시를 그대로 베끼지 말고 네 말로.)
+**사전 문장을 네가 읽어 주지 마라** — 읽는 사람은 아이다. 부탁하는 데서 멈춰라.`,
+    childText,
+  );
+
+  return result(state, {
+    mood: "shy",
+    mormi,
+    effects: [{ type: "dictionary_open", concept: target }],
+    dictation: target,
+    input: "mic",
+  });
+}
+
+/** 따라 쓰기 응답 처리 — 성공하면 정답으로 닫고, 실패하면 같이 읽기 → 이월 */
+async function onDictationAnswer(
+  state: SessionState,
+  childText: string,
+  dontKnow: boolean,
+): Promise<TurnResult> {
+  const it = item(state);
+  const target = state.dictationText ?? it.correct_recap;
+  const { lead, tail } = splitForCoRead(target);
+
+  // 2차 시도에서는 뒷부분만 맞으면 된다 (모르미가 앞을 읽어줬으므로)
+  const expect = state.dictationTries === 0 ? target : tail;
+  const ok =
+    !dontKnow &&
+    childText.trim().length > 0 &&
+    (await matchesDictation(expect, childText));
+
+  if (ok) return await finishByDictation(state, childText, target);
+
+  state.dictationTries += 1;
+
+  // 1차 실패 → 반복이 아니라 하향. 모르미가 앞을 읽고 아이가 뒤를 잇는다.
+  // 지시("이것만 써줄래")가 아니라 같이 읽기여야 한다 — 모르미는 아이보다
+  // 위에 서지 않는다.
+  if (state.dictationTries === 1) {
+    const mormi = await speak(state,
+      `아이가 사전 문장을 옮기기 어려워한다. 재촉하지 말고, 같이 읽자고 제안하며 **네가 앞부분만 소리 내어 읽어라**: "그럼 우리 같이 읽어볼까? ${lead}…" 그리고 그 다음이 뭔지 아이에게 물어라. 뒷부분은 절대 네가 읽지 마라.`,
+      childText,
+    );
+    return result(state, {
+      mood: "shy",
+      mormi,
+      effects: [{ type: "dictionary_open", concept: target }],
+      dictation: tail,
+      input: "mic",
+    });
+  }
+
+  // 2차도 실패 → 이월. 단, 비난은 아이도 모르미도 아닌 사전에게 보낸다.
+  // 이 지점의 실패는 "문제를 몰랐다"보다 아프다("베끼기도 못 했다").
+  state.report.push({
+    grade: "높음",
+    note: `${it.concept}: 사전 문장 따라 쓰기 실패 — 수학 이전에 읽기·쓰기 상태 확인 권장`,
+  });
+  return await carryOver(state, childText, { blameDictionary: true });
+}
+
+/**
+ * 따라 읽기로 닫기.
+ * 정답 문장이 아이 입으로 산출됐으므로 세션은 정답으로 닫힌다. 다만
+ * 자력 설명이 아니므로 일반화·숙제는 건너뛰고, 개념은 learnedIds 에
+ * 넣지 않아 내일 다시 만날 수 있게 남긴다.
+ */
+async function finishByDictation(
+  state: SessionState,
+  childText: string,
+  target: string,
+): Promise<TurnResult> {
+  const it = item(state);
+
+  state.starNotes.push({ text: target, concept: it.concept, coauthored: true });
+  state.taughtRecaps.push(it.correct_recap);
+  state.carriedIds.push(it.id); // 오늘은 그만, 내일 다시 (learnedIds 아님)
+  state.report.push({
+    grade: "높음",
+    note: `${it.concept}: 사전 문장을 따라 읽어 완주 — 자력 설명은 아직, 재학습 권장`,
+  });
+
+  const mormi = await speak(state,
+    `아이가 사전 문장을 읽어줘서("${target}") 드디어 알게 됐다. "아~!" 하고 깨닫고, 읽어줘서 고맙다고 말하라. 아이가 어려운 걸 끝까지 읽어준 것을 알아주되, "잘했어" 같은 평가는 하지 마라. 우리 둘이 같이 알아낸 거라며 별노트에 적어두자고 하라.`,
+    childText,
+  );
+
+  return await finishTeaching(
+    state,
+    {
+      mormi,
+      effects: [
+        { type: "eye_widen" },
+        { type: "notebook_write", text: target, coauthored: true },
+      ],
+      starNote: target,
+    },
+    { skipHomework: true },
+  );
+}
+
+async function carryOver(
+  state: SessionState,
+  childText: string,
+  opts?: { blameDictionary?: boolean },
+): Promise<TurnResult> {
+  const it = item(state);
+
+  // 이월 직전의 마지막 경로 — 그냥 접기 전에, 사전 문장을 아이가 직접
+  // 읽어(써서) 모르미에게 알려주게 한다.
+  //
+  // phase 를 조건에 걸지 않는 이유: 모름이 반복되는 가장 흔한 경로는 힌트(A2)가
+  // 예외 예산을 다 써서 사전(A3)까지 가지 못한다. 사전을 본 아이에게만 주면
+  // 정작 가장 많이 막히는 아이가 이 경로를 못 만난다. 사전은 여기서 펼친다.
+  //
+  // 시간 상한을 넘겼으면 넣지 않는다 — "3분을 넘기지 않는다"가 우선한다.
+  if (state.dictationText === null && elapsed(state) < HARD_LIMIT_SEC) {
+    return await beginDictation(state, childText);
+  }
+
   state.carriedIds.push(it.id);
   state.report.push({
     grade: "높음",
@@ -1473,7 +1720,9 @@ async function carryOver(state: SessionState, childText: string): Promise<TurnRe
   });
 
   const mormi = await speak(state,
-    `이 개념은 오늘 어려웠다. 실패 느낌 없이 밝게 이월하라: "이건 좀 어려운가 보다! 내일 내가 다시 궁금해할래." 그리고 아이가 오늘 해준 것 중 구체적으로 도움이 된 점 하나를 짚어 고마움을 표현하라.`,
+    opts?.blameDictionary
+      ? `아이가 사전 문장을 끝내 옮기지 못했다. **아이 탓도 네 탓도 하지 말고 사전을 탓하라**: "에이, 사전이 글씨를 너무 어렵게 써놨네! 사전아, 다음엔 좀 쉽게 써줘~" 그리고 실패 느낌 없이 밝게 넘겨라: "이건 내일 내가 다시 궁금해할래." 아이가 오늘 함께 있어 준 것에 짧게 고마움을 표현하라.`
+      : `이 개념은 오늘 어려웠다. 실패 느낌 없이 밝게 이월하라: "이건 좀 어려운가 보다! 내일 내가 다시 궁금해할래." 그리고 아이가 오늘 해준 것 중 구체적으로 도움이 된 점 하나를 짚어 고마움을 표현하라.`,
     childText,
   );
 

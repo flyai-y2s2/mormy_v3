@@ -53,6 +53,7 @@ interface Turn {
   mormiName?: string;
   childName?: string;
   bubbles?: string[];
+  dictation?: string;
   /** 서버가 되돌려준 세션 상태 — 다음 요청에 그대로 실어 보낸다 (서버리스 대응) */
   state?: unknown;
   profile?: unknown;
@@ -293,6 +294,9 @@ export default function Home() {
   // 아이가 지어준 이름을 화면 문구가 그대로 쓴다
   const name = turn?.mormiName ?? "모르미";
   const atDesk = scene !== "room" && !onboarding;
+  // 사전 문장 따라 하기 — 안내 문구는 입력 방식에 따라 화면이 고른다.
+  // (음성 모드가 생기면 "따라 읽어볼까?" 로 바뀐다)
+  const dictation = turn?.dictation;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 items-start gap-4 p-4">
@@ -494,6 +498,11 @@ export default function Home() {
           )}
 
           {/* 문장 수준(사다리 3단계)에서만 직접 말하기 — 지금은 타이핑, 나중에 음성 */}
+          {input === "mic" && dictation && (
+            <p className="mb-2 rounded-xl border-2 border-dashed border-[#c3aede] bg-[#f7f2fd] px-3 py-2 text-[13px] text-[#5c4a7d]">
+              📖 사전 속 문장을 그대로 따라 써보자
+            </p>
+          )}
           {input === "mic" && (
             <div className="flex gap-2">
               <input
@@ -504,7 +513,13 @@ export default function Home() {
                   if (e.key === "Enter" && !e.nativeEvent.isComposing) submit();
                 }}
                 disabled={busy}
-                placeholder={onboarding ? "이름을 알려주세요…" : `${name}에게 가르쳐 주세요…`}
+                placeholder={
+                  onboarding
+                    ? "이름을 알려주세요…"
+                    : dictation
+                      ? "사전 속 문장을 따라 써보세요…"
+                      : `${name}에게 가르쳐 주세요…`
+                }
                 className="min-w-0 flex-1 rounded-full border-2 border-[#e0c69a] px-4 py-3 text-[16px] outline-none focus:border-[#5ec9b0]"
               />
               {/* 아이패드 화상 키보드에는 Enter가 눈에 띄지 않는다 — 보내기 버튼을 항상 둔다 */}

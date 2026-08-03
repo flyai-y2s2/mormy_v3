@@ -28,6 +28,11 @@ export function withCopula(name: string): string {
   return hasFinalConsonant(name) ? `${name}이야` : `${name}야`;
 }
 
+/** 이름 + 동반격 조사. 받침이 있으면 "이랑", 없으면 "랑". */
+export function withCompanion(name: string): string {
+  return hasFinalConsonant(name) ? `${name}이랑` : `${name}랑`;
+}
+
 /** 말 + 목적격 조사. 받침이 있으면 "을", 없으면 "를". */
 export function withObject(word: string): string {
   return hasFinalConsonant(word) ? `${word}을` : `${word}를`;
