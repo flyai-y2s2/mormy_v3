@@ -33,7 +33,14 @@ export default function RootLayout({
       lang="ko"
       className={`${bodyFont.variable} ${handFont.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        {/* 개발 단계 고지 — 아이가 아니라 어른(참관자·심사위원)에게 하는 말이므로 작고 조용하게 */}
+        <footer className="px-4 pb-3 text-center text-[11px] leading-relaxed text-stone-400">
+          본 서비스는 현재 개발 중으로, 추후 STT(음성으로 입력하기) 및 TTS(텍스트
+          읽어주기) 기능이 추가될 예정입니다.
+        </footer>
+      </body>
     </html>
   );
 }

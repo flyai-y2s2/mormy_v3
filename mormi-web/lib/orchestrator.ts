@@ -620,8 +620,13 @@ export function selectUnit(state: SessionState, concept: string): TurnResult {
   state.scene = "dictionary"; // 가르치기는 '준비 다 했어!' 이후에 시작한다
 
   // 사전 내용: 개념이 KB 표준 안이면 교과 데이터에서 뽑고(지어내지 않는다),
-  // KB 밖 개념(등가·잔여)은 직접 적어 둔 prep 문장을 쓴다. 둘 다 없으면
-  // 규칙 요지라도 보여줘 사전이 빈 채로 뜨지 않게 한다.
+  // KB 밖 개념(등가·1에 가까운 분수)은 직접 적어 둔 prep 문장을 쓴다.
+  // 둘 다 없으면 규칙 요지라도 보여줘 사전이 빈 채로 뜨지 않게 한다.
+  //
+  // prep 을 직접 쓸 때도 **반드시 교과서의 말투와 어휘**로 쓴다. 사전은 아이가
+  // 막혔을 때 소리 내어 읽는 최후의 권위이므로, 여기에 우리가 만든 비유(피자 등)를
+  // 넣으면 아이가 교과 지식이 아니라 이 앱의 설명을 외우게 된다. 비유는 모르미의
+  // 대화에만 산다. (scripts/print-script.mjs 린터가 이 규칙을 검사한다)
   const fromKb = prepCard(picked.keywords);
   const card =
     picked.prep && picked.prep.length > 0

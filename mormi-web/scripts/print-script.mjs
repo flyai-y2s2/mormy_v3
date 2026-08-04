@@ -183,6 +183,7 @@ function bannedNeedle(entry) {
   return entry.replace(/^\s*\([^)]*\)\s*/, '').trim();
 }
 
+const METAPHOR_WORDS = ['피자'];
 const CONCEPT_WORDS = ['분수', '수', '조각', '피자'];
 const CARRYOVER_RE = /(^|[^라])(그럼 |아까 |그거 |그게 |이것도 )/;
 
@@ -222,6 +223,24 @@ function lintUnit(item) {
         path: `generalize_by_ladder["${L}"]`,
         detail: `${CONCEPT_WORDS.join('·')} 중 아무 말도 안 나옴 — 무엇에 대한 규칙인지 사라졌을 수 있음`,
         value: text,
+      });
+    }
+  }
+
+  // (d) 궁금해 사전은 교과서의 말이어야 한다 — 우리가 만든 비유가 들어가면 안 된다.
+  //     사전은 아이가 막혔을 때 소리 내어 읽는 '최후의 권위'다. 그 권위가 우리
+  //     비유라면 아이는 교과 지식이 아니라 이 앱의 설명을 외우게 되고, 학교
+  //     시험지에서 만날 언어와도 멀어진다. 비유는 모르미의 대화에만 산다.
+  for (const [i, line] of (item.prep ?? []).entries()) {
+    if (typeof line !== 'string') continue;
+    const found = METAPHOR_WORDS.filter((w) => line.includes(w));
+    if (found.length) {
+      violations.push({
+        kind: '사전에 비유',
+        level: '위반',
+        path: `prep[${i}]`,
+        detail: `"${found.join('·')}" — 사전은 교과 언어로만 쓴다 (비유는 모르미 대화에서)`,
+        value: line,
       });
     }
   }
