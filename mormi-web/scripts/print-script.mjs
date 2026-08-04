@@ -288,6 +288,40 @@ function lintUnit(item) {
     }
   }
 
+  // (f) 한 문장 한 프레임 — 탭 질문이 비유의 말(피자·조각)과 기호의 말(분수·숫자)을
+  //     한 문장에 섞으면, 그 다리("아래 숫자가 작으면 조각이 크다")를 이미 아는
+  //     사람만 이해할 수 있는 질문이 된다. 다리는 지금 가르치고 있는 내용이다.
+  //     (1/3 같은 분수 리터럴은 두 프레임 모두의 '그 대상'이므로 기호어로 안 센다)
+  const PIZZA_WORDS = ['피자', '조각'];
+  const SYMBOL_WORDS = ['분수', '숫자', '위가', '위아래'];
+  for (const [path, q] of tapPairs) {
+    const pizza = PIZZA_WORDS.filter((w) => q.includes(w));
+    const symbol = SYMBOL_WORDS.filter((w) => q.includes(w));
+    if (pizza.length && symbol.length) {
+      violations.push({
+        kind: '프레임 혼합',
+        level: '의심',
+        path,
+        detail: `비유의 말(${pizza.join('·')})과 기호의 말(${symbol.join('·')})이 한 문장에 — 한 문장 한 프레임`,
+        value: q,
+      });
+    }
+  }
+
+  // (g) 탭 질문 길이 — 초3~4 저성취 아동이 한 번에 읽어낼 수 있어야 한다.
+  for (const [path, q] of tapPairs) {
+    const words = q.trim().split(/\s+/).length;
+    if (words > 16) {
+      violations.push({
+        kind: '질문 과길이',
+        level: '의심',
+        path,
+        detail: `${words}어절 — 16어절을 넘는 탭 질문은 나눠 쓰거나 줄일 것`,
+        value: q,
+      });
+    }
+  }
+
   // (c) 모르미가 먼저 던지는 말이 앞 대화에 기대고 있는지 (오탐 가능 — '의심'만)
   const carryTargets = [];
   if (typeof item.mormi_wrong_try === 'string') {
