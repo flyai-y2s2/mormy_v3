@@ -1258,7 +1258,10 @@ async function onTaught(
   // 못 해도 실패로 만들지 않는다.
   const needGeneralize =
     !fromGeneralize &&
-    cls?.generalized !== true &&
+    // 규칙을 '말로' 산출했을 때만 일반화를 건너뛴다. 탭으로 고른 규칙(빈칸
+    // 완성)은 재인이지 산출이 아니므로 — 그대로 통과시키면 노트도 없이
+    // "확장하지 못함"만 남는다 — 일반화 2단계로 보내 아이 입으로 꺼내게 한다.
+    !(cls?.generalized === true && spoke) &&
     state.partialCount < 2 && // 이미 두 번 헤맸으면 더 밀지 않는다
     state.offTopicCount < 3 && // 장난으로 흐른 세션은 더 밀지 않는다
     elapsed(state) < HARD_LIMIT_SEC &&
