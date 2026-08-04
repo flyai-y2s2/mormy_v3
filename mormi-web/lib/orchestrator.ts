@@ -114,6 +114,17 @@ interface Item {
   generalize_by_ladder?: Record<string, string>;
   /** 설명을 거부할 때 부담을 낮추는 마중물 — 모르미가 시작하고 아이가 뒤만 잇는다 */
   generalize_stem?: string;
+  /**
+   * 일반화 1단계(탭 확정)의 선택지. 규칙을 '고르는' 것은 산출이 아니지만,
+   * 아이가 어느 규칙을 보고 있는지 확정해야 2단계(설명 청하기)를 물을 수 있다.
+   */
+  generalize_choices_by_ladder?: Record<string, string[]>;
+  /** 위 선택지 중 옳은 것 — 문자열 대조로 판정한다(분류기 없음) */
+  generalize_choice_answer?: string;
+  /** 아이가 고른 규칙을 문장으로 확정할 때 쓰는 원문. 노트에도 이 문장이 실린다 */
+  generalize_rule_line?: string;
+  /** 개념별 용어 계약(금칙어·비교축 등) — 콘텐츠 쪽 메모, 코드가 해석하지 않는다 */
+  terms?: Record<string, unknown>;
   generalized_target?: string;
   choices_by_ladder?: Record<string, string[]>;
   hint: string;
@@ -172,20 +183,43 @@ function contentful(text: string): boolean {
   return t.length > 0 && !isBareAck(t);
 }
 
+/**
+ * 의문문인가 — 별노트에 실리면 안 되는 말.
+ *
+ * 아이가 되묻는 말("그게 무슨 말이야?")이 노트에 적히면, 아이가 가르쳐준
+ * 지식인 것처럼 남는다. 노트는 언제나 평서문이어야 한다.
+ */
+function isQuestion(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (t.endsWith("?") || t.endsWith("？")) return true;
+  return /(뭔데|뭐야|뭐지|뭐라고|무슨 (말|뜻)|어떻게 (해|하라고))[?？]?$/.test(t);
+}
+
 /** 분류기가 합성한 별노트 문장 — 비었거나 이상하면 버린다 */
 function noteOf(cls?: Classification): string | null {
   const t = cls?.note?.trim();
   if (!t || !contentful(t) || t.length < 6 || t.length > 80) return null;
+  if (isQuestion(t)) return null; // 분류기가 아이의 되물음을 그대로 옮긴 경우
   return t;
 }
 
-/** 일반화 되물음 질문 — 사다리에 없으면 상위 문안으로 대체한다 */
-function generalizeQOf(it: Item, ladder: number): string | undefined {
-  return (
-    it.generalize_by_ladder?.[String(ladder)] ??
-    it.generalize_by_ladder?.["3"] ??
-    it.generalize_by_ladder?.["2"]
-  );
+/**
+ * 지금 단계의 일반화 질문.
+ * choice(탭으로 규칙 확정) → ["2"], explain(아이 말로 설명) → ["3"].
+ * 없으면 다른 쪽 문안으로 대체한다.
+ */
+function generalizeAskOf(it: Item, stage: GeneralizeStage): string | undefined {
+  return stage === "choice"
+    ? (it.generalize_by_ladder?.["2"] ?? it.generalize_by_ladder?.["3"])
+    : (it.generalize_by_ladder?.["3"] ?? it.generalize_by_ladder?.["2"]);
+}
+
+/** 아이가 지금 실제로 듣고 있는 질문 — 판정·재청·되물음 재설명이 모두 이걸 쓴다 */
+function currentQuestion(state: SessionState, it: Item): string {
+  return state.phase === "generalize"
+    ? (generalizeAskOf(it, state.generalizeStage) ?? "왜 그런지 네 말로 설명해줘")
+    : it.reask_by_ladder[String(state.ladder)];
 }
 
 // ---------- 세션 상태 ----------
@@ -200,6 +234,14 @@ type Phase =
   | "continue" // 한 개념을 끝내고 계속할지 고르는 중
   | "closing"
   | "done";
+
+/**
+ * 일반화는 두 걸음이다.
+ * choice   — 규칙을 탭으로 고르게 해서 '어느 규칙 얘기인지'를 확정한다(재인).
+ * explain  — 확정된 규칙을 아이의 말로 설명하게 청한다(산출).
+ * null     — 일반화 단계가 아니다.
+ */
+type GeneralizeStage = "choice" | "explain" | null;
 
 export interface SessionState {
   id: string;
@@ -239,6 +281,15 @@ export interface SessionState {
   generalizeReasked: boolean;
   /** 거부 시 내준 마중물 — 아이가 완성하면 노트에는 stem+답을 합쳐 싣는다 */
   generalizeStem: string | null;
+  /** 일반화의 어느 걸음에 있는가 (phase === "generalize" 일 때만 의미 있다) */
+  generalizeStage: GeneralizeStage;
+  /** 1단계에서 규칙을 옳게 골랐는가 — 설명까지 못 가도 이만큼은 정직하게 귀속한다 */
+  generalizeChoiceCorrect: boolean;
+  /**
+   * 아이가 "그게 무슨 말이야?"라고 되물어 질문을 다시 풀어준 횟수.
+   * 되물음은 회피가 아니라 참여다 — 예산·사다리를 쓰지 않되, 무한 반복은 막는다.
+   */
+  clarifyCount: number;
 
   /** 학습과 무관한 장난 발화 횟수 — 저보상 대응과 쉬운 닫기의 기준 */
   offTopicCount: number;
@@ -304,8 +355,15 @@ function visualEffect(it: Item): Effect {
 /** 사다리 단계에 맞는 입력 모드와 선택지 */
 function inputFor(state: SessionState): { input: InputMode; choices?: string[] } {
   const it = item(state);
-  // 일반화 되물음은 항상 아이의 말로 받는다 — 선택지로 고른 규칙은 산출이 아니다.
-  if (state.phase === "generalize") return { input: "mic" };
+  // 일반화 1단계(choice)만 탭으로 받는다 — 어느 규칙 얘기인지 확정하는 자리다.
+  // 2단계(explain)는 반드시 아이의 말로 받는다 — 고른 규칙은 산출이 아니다.
+  if (state.phase === "generalize") {
+    if (state.generalizeStage === "choice") {
+      const opts = it.generalize_choices_by_ladder?.["2"];
+      if (opts) return { input: "choices", choices: opts };
+    }
+    return { input: "mic" };
+  }
   const opts = it.choices_by_ladder?.[String(state.ladder)];
   // 선택지가 있으면 탭으로 답한다 — 사다리 하위 칸에서는 키보드를 띄우지 않는다.
   return opts ? { input: "choices", choices: opts } : { input: "mic" };
@@ -366,6 +424,9 @@ export function startSession(
     lastMormi: "",
     generalizeReasked: false,
     generalizeStem: null,
+    generalizeStage: null,
+    generalizeChoiceCorrect: false,
+    clarifyCount: 0,
     offTopicCount: 0,
     // 프로필의 주인은 화면이다.
     // incoming 이 undefined  = 화면이 프로필 얘기를 안 함 → 서버 파일을 본다(로컬 개발 편의)
@@ -641,7 +702,8 @@ interface Classification {
     | "오개념_동조"
     | "모름"
     | "무응답"
-    | "무관_장난";
+    | "무관_장난"
+    | "되물음";
   reason: string;
 }
 
@@ -659,6 +721,7 @@ const CLASSIFICATION_SCHEMA = {
         "모름",
         "무응답",
         "무관_장난",
+        "되물음",
       ],
     },
     generalized: {
@@ -685,9 +748,7 @@ async function classify(
   // 판정 기준은 반드시 '아이가 방금 실제로 들은 질문'이어야 한다.
   // 일반화 단계에서 되묻기 질문을 기준 삼으면 판정과 대화가 어긋난다.
   const isGeneralize = state.phase === "generalize";
-  const asked = isGeneralize
-    ? (generalizeQOf(it, state.ladder) ?? "왜 그런지 네 말로 설명해줘")
-    : it.reask_by_ladder[String(state.ladder)];
+  const asked = currentQuestion(state, it);
   const expected = isGeneralize
     ? (it.generalized_target ?? "다른 분수에도 통하는 일반 규칙을 아이의 말로 설명")
     : (it.expected_by_ladder?.[String(state.ladder)] ?? it.correct_recap);
@@ -713,9 +774,12 @@ AI 동생이 방금 아이에게 물은 질문: "${asked}"
 - 부분_가르침: 방향은 맞지만 기대 답의 핵심이 빠짐
 - 오답: 틀렸지만 AI의 오개념을 지지하는 건 아님
 - 오개념_동조: AI의 오개념("${it.misconception}")이 맞다고 동의함
-- 모름: 모르겠다고 하거나 되묻거나 회피함
+- 모름: 모르겠다고 하거나 회피함
+- 되물음: 방금 받은 질문의 뜻·대상을 물음 ("그게 무슨 말이야?", "뭐가?", "다시 말해줘")
 - 무응답: 의미 있는 내용이 없음. "응"·"그래"·"맞아"처럼 맞장구만 있는 답도 내용 전달이 없으므로 무응답이다. 단, 네 틀린 주장에 "아니야"라고 반대하는 것은 무응답이 아니라 부분_가르침이다.
 - 무관_장난: 지금 질문·학습과 무관한 장난, 놀리기, 딴 이야기, 아무 글자 두드리기 ("똥", "ㅋㅋㅋㅋ", "너 바보야?", "게임하자" 등). 모름과 다르다 — 회피가 아니라 딴짓이다.
+
+"1/3 아니야?" 처럼 답을 질문 형태로 말한 것은 되물음이 아니다 — 내용에 따라 옳은_가르침/오답/오개념_동조로 판정하라.
 
 애매하면 아이에게 유리한 쪽(부분_가르침보다 옳은_가르침)으로 판정하라.
 
@@ -728,6 +792,7 @@ AI 동생이 방금 아이에게 물은 질문: "${asked}"
   예: 질문 "1/2, 2/4 말고 3/6 같은 분수는 어때?" + 답 "다 반으로 똑같아" → "1/2랑 2/4랑 3/6은 다 반으로 똑같아"
 - 아이가 쓴 단어와 말투를 최대한 그대로 살려라. 질문에도 아이의 답에도 없는 새로운 지식·이유·숫자를 추가하지 마라. 아이가 쓰지 않은 수학 용어(분모, 분자, 단위분수 등)로 바꿔 말하지 마라.
 - 반말, 30자 안팎.
+- note 는 반드시 평서문으로 쓴다. (아이가 되물은 말·질문을 그대로 옮기지 마라)
 
 JSON만 출력: {"label": "...", "generalized": true/false, "note": "...", "reason": "..."}`;
   return await callClaudeJson<Classification>(
@@ -756,6 +821,7 @@ async function speak(
    - 앞에서 세운 적 없는 상황을 아는 것처럼 말하지 마라. "조각", "남은 조각", "나누는 사람" 같은 말은 **무엇을 나눈 조각인지가 이미 나왔을 때만** 쓸 수 있다. 안 나왔으면 "피자 2/3" 처럼 **단어 하나만 붙여** 상황을 세워라 — 설명을 덧붙이지 마라.
    - 화면에 그림이 없을 수도 있으니 "이 그림 봐", "여기 보면" 처럼 무언가를 가리키는 말은 지시에 그림이 명시됐을 때만 쓰라.
    - "그럼", "이것도", "아까 그거"처럼 앞 내용을 가리키는 말은, 그 앞 내용이 실제로 이 대화에 있을 때만 쓰라.
+9. 아이의 말뜻을 모르면서 이해한 척하지 마라. 무슨 뜻인지 모르겠으면 되물어라.
 
 [직전에 네가 한 말]
 "${state.lastMormi || "(첫 마디)"}"
@@ -799,9 +865,14 @@ export async function processTurn(
     return await onHomeworkAnswer(state, childText, dontKnow);
   }
 
-  // 사전 따라 쓰기도 6종 발화 분류가 아니라 표적 문장과의 대조 문제다.
+  // 사전 따라 쓰기도 발화 분류가 아니라 표적 문장과의 대조 문제다.
   if (state.phase === "dictation") {
     return await onDictationAnswer(state, childText, dontKnow);
+  }
+
+  // 일반화 1단계(규칙 고르기)도 마찬가지 — 선택지 탭은 결정형 대조 문제다.
+  if (state.phase === "generalize" && state.generalizeStage === "choice") {
+    return await onGeneralizeChoice(state, childText, dontKnow);
   }
 
   // 일반화 되물음의 맞장구("응")·거부("싫어")는 분류기 없이 한 번만 다르게 청한다.
@@ -829,7 +900,7 @@ export async function processTurn(
           return result(state, { mood: "shy", mormi, input: "mic" });
         }
 
-        const q = generalizeQOf(it, state.ladder) ?? "왜 그런지 네 말로 설명해줘";
+        const q = currentQuestion(state, it);
         const mormi = await speak(state,
           `아이가 "${childText}"라고 맞장구만 쳤다. 그것만 들으면 네가 아직 잘 모르겠다고 솔직하게 말하고, 아이의 말로 설명해달라고 다시 부탁하라: "${q}"`,
           childText,
@@ -858,7 +929,11 @@ export async function processTurn(
 
   // 일반화 되물음에 규칙을 못 꺼냈어도 실패가 아니다. 답은 이미 맞혔으므로
   // 아이가 준 것까지만 인정하고 넘어간다(더 밀면 성공 경험이 실패로 뒤집힌다).
+  // 단, 질문의 뜻을 되물은 것은 못 한 게 아니라 물은 것이다 — 한 번은 풀어준다.
   if (state.phase === "generalize" && cls.label !== "옳은_가르침") {
+    if (cls.label === "되물음" && state.clarifyCount < 1) {
+      return await onClarify(state, childText);
+    }
     return await onTaught(state, childText, cls, { viaTap });
   }
 
@@ -920,6 +995,12 @@ export async function processTurn(
     case "오개념_동조":
       return await onMisconceptionAgreed(state, childText, cls, overTime);
 
+    // 되물음은 회피가 아니라 참여다 — 사다리도 예외 예산도 쓰지 않고 질문만 푼다.
+    // 두 번째부터는 질문을 못 알아들은 것이므로 막힘(사다리 하향)으로 다룬다.
+    case "되물음":
+      if (state.clarifyCount < 1) return await onClarify(state, childText);
+      return await onStuck(state, childText, overTime);
+
     case "모름":
     case "무응답":
       return await onStuck(state, childText, overTime);
@@ -927,6 +1008,81 @@ export async function processTurn(
     case "무관_장난":
       return await onOffTopic(state, childText, overTime);
   }
+}
+
+/**
+ * "그게 무슨 말이야?" — 질문을 못 알아들었을 때.
+ *
+ * 모름과 섞으면 사다리가 내려가고 예산이 깎인다. 하지만 아이는 회피한 게 아니라
+ * 물은 것이다 — 반갑게 받아 같은 질문을 더 쉬운 말로 다시 낸다.
+ * 사다리·예외 예산·부분 가르침 횟수 어느 것도 소비하지 않는다.
+ */
+async function onClarify(
+  state: SessionState,
+  childText: string,
+): Promise<TurnResult> {
+  const it = item(state);
+  state.clarifyCount += 1;
+  const q = currentQuestion(state, it);
+  const mormi = await speak(state,
+    `아이가 방금 질문이 무슨 뜻인지 물었다("${childText}"). 귀찮아하지 말고 반갑게, 같은 질문을 더 쉬운 말로 풀어 다시 물어라: "${q}" — 질문의 답을 네가 절대 말하면 안 된다.`,
+    childText,
+  );
+  return result(state, { mood: "shy", mormi, ...inputFor(state) });
+}
+
+/**
+ * 일반화 1단계 — 아이가 규칙을 탭으로 골랐다.
+ *
+ * 여기서 하는 일은 확정이지 채점이 아니다. 옳게 골랐으면 그 규칙 문장을
+ * 소리 내어 확정하고 곧바로 "왜 그런지 네 말로" 청한다(2단계).
+ * 틀리게 골랐으면 **그 규칙을 절대 확정하지 않는다** — 틀린 문장을 모르미의
+ * 입으로 옮기면 아이가 그것을 배운 것으로 가져간다. 여기서 교정하지도 않는다.
+ * 세션 끝의 총정리 복창이 올바른 규칙으로 오늘을 닫아준다.
+ */
+async function onGeneralizeChoice(
+  state: SessionState,
+  childText: string,
+  dontKnow: boolean,
+): Promise<TurnResult> {
+  const it = item(state);
+
+  const correct =
+    !dontKnow &&
+    !!it.generalize_choice_answer &&
+    childText.trim() === it.generalize_choice_answer;
+
+  // 못 고르겠다거나 다른 규칙을 골랐다 → 규칙 노트 없이 부드럽게 닫는다.
+  if (!correct) return await closeGeneralize(state);
+
+  state.generalizeChoiceCorrect = true;
+  const rule = it.generalize_rule_line ?? it.generalize_choice_answer!;
+
+  const confirm = await speak(state,
+    `아이가 규칙을 골라 알려줬다. 그걸 문장으로 받아 확정하라 — "아하! ${rule} 이라는 거구나~" 하는 느낌으로, **이 규칙 문장("${rule}")은 그대로 살려서** 말하라.
+"맞아", "정답이야" 같은 채점하는 말은 절대 쓰지 마라. 질문은 하지 마라 — 질문은 다음 말풍선에서 따로 한다.`,
+    childText,
+  );
+
+  // 2단계 질문은 화자를 거치지 않고 원문 그대로 낸다 (문안이 보장돼야 한다).
+  state.generalizeStage = "explain";
+  const ask = generalizeAskOf(it, "explain") ?? "왜 그런지 네 말로 설명해줘";
+
+  return result(state, {
+    mood: "aha",
+    mormi: `${confirm}\n\n${ask}`,
+    bubbles: [confirm, ask],
+    input: "mic",
+  });
+}
+
+/**
+ * 일반화 종료 공통 — 규칙까지는 못 갔지만 답은 이미 맞혔다.
+ * 받은 만큼만 인정하고 닫는다. 아이의 말을 넘겨주지 않는 이유는,
+ * 틀리게 고른 선택지를 모르미가 되받아 말하지 않게 하기 위해서다.
+ */
+async function closeGeneralize(state: SessionState): Promise<TurnResult> {
+  return await onTaught(state, "", undefined, { viaTap: true });
 }
 
 /**
@@ -976,10 +1132,7 @@ async function onOffTopic(
   // 재미를 주지 않는다: 장난을 받아주지 말고, 궁금하다는 마음만 담아 한마디.
   // 그리고 **직전에 했던 질문을 그대로** 다시 한다 — 새 질문이 아니라 반복이어야
   // 하므로 화자 LLM을 거치지 않고 원문을 그대로 내보낸다.
-  const backTo =
-    state.phase === "generalize"
-      ? (generalizeQOf(it, state.ladder) ?? "왜 그런지 네 말로 설명해줘")
-      : it.reask_by_ladder[String(state.ladder)];
+  const backTo = currentQuestion(state, it);
   const react = await speak(state,
     `아이가 학습과 무관한 장난말("${childText}")을 했다.
 장난에 웃어주지도, 맞장구치지도, 되받아치지도 마라 — 재미를 주면 장난이 반복된다. 혼내지도 마라.
@@ -1022,6 +1175,9 @@ function beginItem(state: SessionState, it: Item): void {
   state.dictationTries = 0;
   state.generalizeReasked = false;
   state.generalizeStem = null;
+  state.generalizeStage = null;
+  state.generalizeChoiceCorrect = false;
+  state.clarifyCount = 0;
   state.exceptionCount = 0;
 }
 
@@ -1043,39 +1199,53 @@ async function onTaught(
   const fromGeneralize = state.phase === "generalize";
   const spoke = !opts?.viaTap && contentful(childText);
 
+  // 아이 원문을 노트에 그대로 실을 수 있는가.
+  // 의문문("그게 무슨 말이야?")은 아이가 알려준 것이 아니라 물은 것이므로 후보가 아니다.
+  const rawNote = spoke && !isQuestion(childText) ? childText.trim() : null;
+
   // 일반화 되물음에 '내용 있는' 규칙을 말했을 때 채택한다.
   // 노트는 한 문장만 봐도 이해되는 완결 문장이어야 하므로("다 반으로 똑같아"만으로는
   // 나중에 못 알아본다) 분류기가 질문 맥락과 합쳐 만든 문장을 우선 쓴다.
   // 아이 기여가 한두 마디였다면 '같이 완성함'으로 표시해 귀속을 부풀리지 않는다.
   if (fromGeneralize && cls?.label === "옳은_가르침" && spoke) {
     const t = childText.trim();
-    state.generalizedNote = {
-      text:
-        state.generalizeStem && t.length < 8
-          ? `${state.generalizeStem} ${t}` // 마중물+답은 그대로 합친다 — LLM 합성은 안 쓴 용어를 끌어올 수 있다
-          : (noteOf(cls) ?? t),
-      coauthored: t.length < 8,
-    };
+    // 마중물+답은 그대로 합친다 — LLM 합성은 안 쓴 용어를 끌어올 수 있다
+    const stemmed =
+      state.generalizeStem && t.length < 8 && !isQuestion(t)
+        ? `${state.generalizeStem} ${t}`
+        : null;
+    const text = stemmed ?? noteOf(cls) ?? rawNote;
+    if (text) state.generalizedNote = { text, coauthored: t.length < 8 };
   }
 
   // 답을 맞혔어도 곧바로 깨닫지 않고, 아이의 입으로 일반 규칙을 말하게 되묻는다.
   // 탭(고르기)만으로 맞힌 경우도 마찬가지다 — 고른 것은 재인이지 산출이 아니고,
   // 프로테제 효과는 아이가 '규칙을 말할 때' 생긴다. 단 한 번만 청하고,
   // 못 해도 실패로 만들지 않는다.
-  const generalizeQ = generalizeQOf(it, state.ladder);
   const needGeneralize =
     !fromGeneralize &&
     cls?.generalized !== true &&
     state.partialCount < 2 && // 이미 두 번 헤맸으면 더 밀지 않는다
     state.offTopicCount < 3 && // 장난으로 흐른 세션은 더 밀지 않는다
     elapsed(state) < HARD_LIMIT_SEC &&
-    !!generalizeQ;
+    !!generalizeAskOf(it, "explain");
 
   if (needGeneralize) {
     state.phase = "generalize";
-    state.answerNote = spoke
-      ? { text: noteOf(cls) ?? childText.trim(), coauthored: childText.trim().length < 8 }
-      : null;
+    // 사다리를 내려온 아이(≤2)에게 곧바로 "왜 그런지 말해봐"는 너무 큰 문장이다.
+    // 규칙을 먼저 고르게 해 무엇을 말할지 확정하고(1단계), 그 다음에 설명을 청한다.
+    const canChoose =
+      state.ladder <= 2 &&
+      !!it.generalize_choices_by_ladder?.["2"] &&
+      !!it.generalize_choice_answer &&
+      !!it.generalize_by_ladder?.["2"];
+    state.generalizeStage = canChoose ? "choice" : "explain";
+    const generalizeQ =
+      generalizeAskOf(it, state.generalizeStage) ?? "왜 그런지 네 말로 설명해줘";
+
+    const at = noteOf(cls) ?? rawNote;
+    state.answerNote =
+      spoke && at ? { text: at, coauthored: childText.trim().length < 8 } : null;
     const mormi = await speak(state,
       `아이가 이 문제의 답은 맞췄다("${childText}"). 하지만 아직 이 문제에만 해당하는 말이라, 규칙까지는 알지 못한 상태다.
 아이 말을 짧게 받아 인정하되 **아이가 말하지 않은 내용을 절대 덧붙이지 마라**. 아직 깨닫지 못했으므로 "아~!" 나 "이제 알겠어" 같은 표현을 쓰지 마라.
@@ -1085,18 +1255,32 @@ async function onTaught(
     return result(state, { mood: "puzzled", mormi, ...inputFor(state) });
   }
 
+  // 탭으로는 규칙을 옳게 골랐지만, 말로 설명하는 데까지는 가지 못했다.
+  // 고른 것은 재인이지 산출이 아니므로 '스스로 설명함'으로 적을 수 없다 —
+  // 규칙 문장을 싣되 coauthored(같이 공부함)로 정직하게 귀속한다.
+  const ruleFromChoice =
+    fromGeneralize &&
+    cls?.label !== "옳은_가르침" &&
+    state.generalizedNote === null &&
+    state.generalizeChoiceCorrect &&
+    !!it.generalize_rule_line;
+  if (ruleFromChoice) {
+    state.generalizedNote = { text: it.generalize_rule_line!, coauthored: true };
+  }
+
   // 별노트 게이트: 규칙 문장(일반화 답 또는 처음부터 규칙) > 설명 문장 순.
   // 각 후보는 분류기가 질문 맥락과 합친 완결 문장이며, 맞장구("응")·탭한
-  // 낱말("많이")·너무 짧은 말은 후보가 되지 못한다.
+  // 낱말("많이")·의문문·너무 짧은 말은 후보가 되지 못한다.
+  const cand = noteOf(cls) ?? rawNote;
   const directRule =
-    cls?.generalized === true && spoke
-      ? { text: noteOf(cls) ?? childText.trim(), coauthored: false }
+    cls?.generalized === true && spoke && cand
+      ? { text: cand, coauthored: false }
       : null;
   const rule = state.generalizedNote ?? directRule;
   const sentenceCand =
     state.answerNote ??
-    (spoke
-      ? { text: noteOf(cls) ?? childText.trim(), coauthored: childText.trim().length < 8 }
+    (spoke && cand
+      ? { text: cand, coauthored: childText.trim().length < 8 }
       : null);
   const note =
     rule ?? (sentenceCand && sentenceCand.text.trim().length >= 6 ? sentenceCand : null);
@@ -1149,7 +1333,11 @@ async function onTaught(
         ? ` 아이가 짧게 답했으니 그 말을 완성된 한 문장으로만 다듬어 되돌려주어라. 아이가 말하지 않은 규칙이나 이유를 네가 만들어 붙이지 마라.`
         : "";
     mormi = await speak(state,
-      noteCoauthored
+      ruleFromChoice
+        ? // 아이가 고른 규칙으로 닫는다. 설명은 못 들었으니 새로 알아낸 척하지 말고,
+          // 아까 아이가 짚어준 그 문장으로만 마무리한다.
+          `아까 아이가 골라준 규칙("${noteText}") 덕분에 오늘 이걸 알게 됐다. 그 문장을 그대로 한 번 더 소리 내어 확인하고, 알려줘서 고맙다고 말하라. 우리 둘이 같이 만든 문장이니 별노트에 적어두자고 하라. **아이가 말하지 않은 이유나 새로운 내용을 절대 덧붙이지 마라.**`
+        : noteCoauthored
         ? `네가 궁금해서 묻던 문장의 끝을 아이가 "${childText}"라고 완성해줬다. 완성된 문장("${noteText}")을 소리 내어 확인하며 "아~!" 하고 깨닫고, 아이 덕분에 알게 됐다고 고마움을 표현하라. 우리 둘이 같이 만든 문장이니 별노트에 적어두자고 말하라.`
         : `아이의 가르침("${noteText}")을 그대로 적용해 다시 풀어서 맞히고, "아~!" 하고 깨달아라. 아이의 말을 인용하며 고마움을 구체적으로 표현하고, 별노트에 적어둔다고 말하라. 오늘 배운 것을 정리하는 말은 하지 마라 — 그건 나중에 한다.${recast}${wasReteach ? " 아까는 우리 둘 다 헷갈렸는데 이제 알겠다는 뉘앙스를 담아라." : ""}`,
       childText,
