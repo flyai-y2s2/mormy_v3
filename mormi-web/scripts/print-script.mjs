@@ -245,6 +245,49 @@ function lintUnit(item) {
     }
   }
 
+  // (e) 탭 질문과 선택지가 이어지는지 — 잘 만들어진 탭 질문은 선택지 문구를
+  //     질문 안에 미리 제시한다 ("A일까, B일까?" → [A, B]). 질문에 등장하지 않는
+  //     어휘로 시작하는 선택지는 아이가 머릿속에서 다리를 놓아야 하므로 표시한다.
+  //     활용 변형(커질까↔커진다)이 있어 어간 접두 매칭만 한다 — '의심' 수준.
+  const tapPairs = [];
+  for (const [L, q] of Object.entries(item.reask_by_ladder ?? {})) {
+    const ch = item.choices_by_ladder?.[L];
+    if (typeof q === 'string' && Array.isArray(ch)) {
+      tapPairs.push([`reask_by_ladder["${L}"]`, q, ch]);
+    }
+  }
+  {
+    const gq = item.generalize_by_ladder?.['2'];
+    const gc = item.generalize_choices_by_ladder?.['2'];
+    if (typeof gq === 'string' && Array.isArray(gc)) {
+      tapPairs.push(['generalize_by_ladder["2"]', gq, gc]);
+    }
+  }
+  const connects = (question, choice) => {
+    if (question.includes(choice)) return true; // 선택지가 질문에 그대로 등장
+    // 낱말 단위: 분수 리터럴("2/4가")은 원문으로, 나머지는 어간 접두(2자, 짧으면 1자)로
+    return choice
+      .split(/\s+/)
+      .some((tok) =>
+        tok.includes('/')
+          ? question.includes(tok)
+          : question.includes(tok.slice(0, 2)) || question.includes(tok.slice(0, 1)),
+      );
+  };
+  for (const [path, q, choices] of tapPairs) {
+    if (q.includes('___')) continue; // 빈칸 채우기 — 선택지는 빈칸을 채우는 것
+    const broken = choices.filter((c) => !connects(q, c));
+    if (broken.length) {
+      violations.push({
+        kind: '질문·선택지 단절',
+        level: '의심',
+        path,
+        detail: `질문에 없는 말로 답하는 선택지: ${broken.join(' | ')} — 질문 안에 선택지를 미리 제시할 것 ("A일까, B일까?")`,
+        value: q,
+      });
+    }
+  }
+
   // (c) 모르미가 먼저 던지는 말이 앞 대화에 기대고 있는지 (오탐 가능 — '의심'만)
   const carryTargets = [];
   if (typeof item.mormi_wrong_try === 'string') {

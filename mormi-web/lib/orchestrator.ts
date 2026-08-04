@@ -1187,7 +1187,7 @@ async function onGeneralizeChoice(
   const rule = it.generalize_rule_line ?? it.generalize_choice_answer!;
 
   const confirm = await speak(state,
-    `아이가 규칙을 골라 알려줬다. 그걸 문장으로 받아 확정하라 — "아하! ${rule} 이라는 거구나~" 하는 느낌으로, **이 규칙 문장("${rule}")은 그대로 살려서** 말하라.
+    `아이가 규칙을 골라 알려줬다. 그걸 문장으로 받아 확정하라 — "아하! ${rule}~ 그런 거구나!" 하는 느낌으로, **이 규칙 문장("${rule}")은 그대로 살려서** 말하라.
 "맞아", "정답이야" 같은 채점하는 말은 절대 쓰지 마라. 질문은 하지 마라 — 질문은 다음 말풍선에서 따로 한다.`,
     childText,
   );
@@ -1383,13 +1383,19 @@ async function onTaught(
     const at = noteOf(cls) ?? rawNote;
     state.answerNote =
       spoke && at ? { text: at, coauthored: childText.trim().length < 8 } : null;
-    const mormi = await speak(state,
+    // 질문은 화자를 거치지 않고 원문 그대로 낸다 — 탭 선택지는 질문 문구와
+    // 짝으로 저작되므로, 화자가 질문을 고쳐 말하면 선택지와의 연결이 끊긴다.
+    const ack = await speak(state,
       `아이가 이 문제의 답은 맞췄다("${childText}"). 하지만 아직 이 문제에만 해당하는 말이라, 규칙까지는 알지 못한 상태다.
-아이 말을 짧게 받아 인정하되 **아이가 말하지 않은 내용을 절대 덧붙이지 마라**. 아직 깨닫지 못했으므로 "아~!" 나 "이제 알겠어" 같은 표현을 쓰지 마라.
-그리고 아이의 말로 규칙을 설명해달라고 되물어라: "${generalizeQ}"`,
+아이 말을 짧게 받아 인정만 하라 — **아이가 말하지 않은 내용을 절대 덧붙이지 마라**. 아직 깨닫지 못했으므로 "아~!" 나 "이제 알겠어" 같은 표현을 쓰지 마라. **질문은 하지 마라** — 질문은 다음 말풍선에서 따로 한다.`,
       childText,
     );
-    return result(state, { mood: "puzzled", mormi, ...inputFor(state) });
+    return result(state, {
+      mood: "puzzled",
+      mormi: `${ack}\n\n${generalizeQ}`,
+      bubbles: [ack, generalizeQ],
+      ...inputFor(state),
+    });
   }
 
   // 탭으로는 규칙을 옳게 골랐지만, 말로 설명하는 데까지는 가지 못했다.
