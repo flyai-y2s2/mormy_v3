@@ -1,6 +1,5 @@
 import { callClaude, callClaudeJson, callClaudeStream } from "./claude";
 import curriculum from "@/content/fractions.json";
-import { prepCard, lookupDictionary } from "./curriculum";
 import {
   loadProfile,
   saveProfile,
@@ -51,6 +50,7 @@ export type InputMode =
   | "stamp" // 맞아 / 아니야 도장
   | "continue" // 더 가르칠지 / 오늘은 여기까지
   | "covers" // 별노트 표지 고르기 (그림 카드)
+  | "bye" // 가르친 것이 없는 세션의 닫기 — 확인할 복창이 없으니 도장도 없다
   | "none"; // 입력 없음 (종료)
 
 /** 표정도 서버가 지시한다 — 화면이 발화를 보고 추측하면 상태와 어긋난다 */
@@ -78,6 +78,12 @@ export interface TurnResult {
    * 없으면 화면은 `mormi` 하나만 그린다.
    */
   bubbles?: string[];
+  /**
+   * 도장 자리에서 '아니야'를 이미 한 번 받아 사전으로 재확인한 뒤라는 표식.
+   * 화면은 이때 '아니야'를 다시 내주지 않는다 — 사전이 이미 판정했고,
+   * 같은 부정을 무한히 받으면 세션이 닫히지 않는다.
+   */
+  agreeOnly?: boolean;
   /** 지난 세션에 적힌 별노트 (세션 시작 시 1회) */
   pastNotes?: { text: string; day: number; coauthored?: boolean }[];
   /** 책상 위에 놓인 분수 카드 두 장 — 지금 다루는 두 분수 */
@@ -265,6 +271,12 @@ export interface SessionState {
   dictationText: string | null;
   dictationTries: number;
   taughtRecaps: string[]; // 아이가 (재)가르쳐 확정된 개념들 — 총정리의 유일한 출처
+  /**
+   * 마무리 복창에 아이가 '아니야'를 눌러 사전으로 재확인했는가.
+   * 세션 수준 플래그다 — 개념이 바뀌어도 리셋하지 않는다(beginItem 에 넣지 않는다).
+   * 복창은 세션 전체를 한 번 정리하는 자리이고, 재확인 의식도 세션당 한 번이다.
+   */
+  recapChallenged: boolean;
   learnedIds: string[]; // 오늘 끝낸 개념
   carriedIds: string[]; // 오늘 이월한 개념
   starNotes: { text: string; concept: string; coauthored?: boolean }[];
@@ -339,6 +351,17 @@ function item(state: SessionState): Item {
 function deskCardsOf(it: Item): string[] {
   const { compare, shade, shades } = it.visual;
   return compare.map((n, i) => `${shades?.[i] ?? shade ?? 1}/${n}`);
+}
+
+/**
+ * 궁금해 사전이 펼쳐질 때 읽히는 한 문장 — 이 개념의 핵심 규칙.
+ *
+ * 화면의 사전 카드(prep)와 같은 출처를 쓴다. 아이가 따라 읽는 문장, 사전을
+ * 같이 찾아볼 때 뜨는 문장, 재확인 때 인용하는 문장이 전부 같아야
+ * "사전은 늘 같은 말을 한다"는 권위가 선다.
+ */
+function dictionaryLine(it: Item): string {
+  return it.prep?.[0] ?? it.correct_recap;
 }
 
 /** 시각적 반증 연출 지시 (item.visual 을 그대로 스프레드하면 type 이 덮인다) */
@@ -417,6 +440,7 @@ export function startSession(
     dictationText: null,
     dictationTries: 0,
     taughtRecaps: [],
+    recapChallenged: false,
     learnedIds: [],
     carriedIds: [],
     starNotes: [],
@@ -619,21 +643,19 @@ export function selectUnit(state: SessionState, concept: string): TurnResult {
   beginItem(state, picked);
   state.scene = "dictionary"; // 가르치기는 '준비 다 했어!' 이후에 시작한다
 
-  // 사전 내용: 개념이 KB 표준 안이면 교과 데이터에서 뽑고(지어내지 않는다),
-  // KB 밖 개념(등가·1에 가까운 분수)은 직접 적어 둔 prep 문장을 쓴다.
-  // 둘 다 없으면 규칙 요지라도 보여줘 사전이 빈 채로 뜨지 않게 한다.
+  // 사전 내용은 콘텐츠에 고정 큐레이션된 prep 문장만 쓴다 — KB 랭킹으로 런타임에
+  // 고르면 같은 개념인데도 화면마다 다른 문장이 떠, 아이가 따라 읽는 문장과
+  // 사전에 보이는 문장이 어긋난다. prep 이 없을 때만 규칙 요지로 폴백해
+  // 사전이 빈 채로 뜨지 않게 한다.
   //
-  // prep 을 직접 쓸 때도 **반드시 교과서의 말투와 어휘**로 쓴다. 사전은 아이가
-  // 막혔을 때 소리 내어 읽는 최후의 권위이므로, 여기에 우리가 만든 비유(피자 등)를
-  // 넣으면 아이가 교과 지식이 아니라 이 앱의 설명을 외우게 된다. 비유는 모르미의
+  // prep 은 **반드시 교과서의 말투와 어휘**로 쓴다. 사전은 아이가 막혔을 때
+  // 소리 내어 읽는 최후의 권위이므로, 여기에 우리가 만든 비유(피자 등)를 넣으면
+  // 아이가 교과 지식이 아니라 이 앱의 설명을 외우게 된다. 비유는 모르미의
   // 대화에만 산다. (scripts/print-script.mjs 린터가 이 규칙을 검사한다)
-  const fromKb = prepCard(picked.keywords);
   const card =
     picked.prep && picked.prep.length > 0
       ? picked.prep
-      : fromKb.length > 0
-        ? fromKb
-        : [picked.generalized_target ?? picked.correct_recap];
+      : [picked.generalized_target ?? picked.correct_recap];
   return result(state, {
     mood: "happy",
     mormi: "우와… 이거 오늘 다 배운 거야? 대단해!",
@@ -672,6 +694,10 @@ export function askQuestion(state: SessionState): TurnResult {
 /**
  * 도장 → 세션 종료, 메인 룸 복귀.
  * 여기서 프로필을 디스크에 남긴다 — 이틀째 오프닝이 이 기록에만 의존한다.
+ *
+ * 가르친 것이 없는 세션은 도장을 찍지 않는다. 찍을 것이 없는데 찍으면
+ * 도장이 '아이가 확인해준 표식'이 아니라 그냥 세션 종료 버튼이 된다.
+ * 배운 것을 언급하는 작별 인사도 하지 않는다 — 없던 일을 자랑할 수 없다.
  */
 export function finishSession(state: SessionState): TurnResult {
   state.scene = "room";
@@ -685,11 +711,65 @@ export function finishSession(state: SessionState): TurnResult {
   p.learnedIds = [...new Set([...p.learnedIds, ...state.learnedIds])];
   saveProfile(p);
 
+  const taught = state.taughtRecaps.length > 0;
+  const called = p.childName ? `, ${p.childName}` : "";
+
   return result(state, {
     mood: "happy",
-    mormi: `오늘 진짜 고마웠어${p.childName ? `, ${p.childName}` : ""}! 나 이거 혼자 풀어보고 내일 자랑할게.`,
-    effects: [{ type: "stamp" }, { type: "mormi_move", to: "blocks" }],
+    mormi: taught
+      ? `오늘 진짜 고마웠어${called}! 나 이거 혼자 풀어보고 내일 자랑할게.`
+      : `오늘 같이 있어줘서 고마워${called}! 내일 또 보자.`,
+    effects: taught
+      ? [{ type: "stamp" }, { type: "mormi_move", to: "blocks" }]
+      : [{ type: "mormi_move", to: "blocks" }],
     input: "none",
+  });
+}
+
+/**
+ * 도장 자리의 두 답 — '맞아'와 '아니야'.
+ *
+ * 아이가 "아니야"를 눌러도 모르미는 우기지도, 순순히 물러서지도 않는다.
+ * 둘 다 관계를 망가뜨린다 — 우기면 모르미가 아이 위에 서고, 물러서면
+ * 아이가 방금 가르친 것이 틀린 것이 된다. 판정은 교과의 권위(사전)에게
+ * 맡기고, 모르미는 같이 찾아보자고 제안하는 데서 멈춘다.
+ *
+ * 재확인은 세션당 한 번이다. 두 번째 '아니야'까지 받으면 세션이 닫히지 않는다.
+ */
+export async function stampSession(
+  state: SessionState,
+  agree: boolean,
+): Promise<TurnResult> {
+  if (agree || state.recapChallenged || state.taughtRecaps.length === 0) {
+    return finishSession(state);
+  }
+
+  state.recapChallenged = true;
+
+  // 마지막으로 배운 개념의 사전 문장을 근거로 삼는다.
+  // (따라 읽기로 닫힌 개념은 learnedIds 가 아니라 carriedIds 에 들어간다)
+  const lastId =
+    state.learnedIds[state.learnedIds.length - 1] ??
+    state.carriedIds[state.carriedIds.length - 1];
+  const it = items.find((i) => i.id === lastId) ?? item(state);
+  const line = dictionaryLine(it);
+
+  const ask = await speak(state,
+    `아이가 정리가 틀렸다고 했다. 당황하거나 우기지 말고, "어? 아니라고? 네가 이렇게 알려줬던 것 같은데… 우리 궁금해 사전에서 다시 찾아볼까?" 하는 느낌으로 사전을 같이 보자고 제안하라. 정답을 네가 단정하지 마라.`,
+    "",
+  );
+
+  // 사전을 펼친 뒤의 말은 화자를 거치지 않는다 — 판정의 문안이 흔들리면 안 된다.
+  // recapLine 이 "오늘 배운 거 내가 정리해볼게"로 시작하므로 여기서 겹치는 도입부를 달지 않는다.
+  const again = `사전을 보니까… 역시 아까 네가 알려준 게 맞았어! ${recapLine(state.taughtRecaps)}`;
+
+  return result(state, {
+    mood: "puzzled",
+    mormi: `${ask}\n\n${again}`,
+    bubbles: [ask, again],
+    effects: [{ type: "dictionary_open", concept: line }],
+    input: "stamp",
+    agreeOnly: true,
   });
 }
 
@@ -1498,14 +1578,7 @@ export async function finishTeaching(
   }
 
   const recaps = state.taughtRecaps;
-  const summary =
-    recaps.length === 0
-      ? "오늘은 여기까지 하자! 내일 또 궁금한 거 물어볼게."
-      : recaps.length === 1
-        ? `오늘 배운 거 내가 정리해볼게. 음… ${recaps[0]} 맞지?`
-        : `오늘 배운 거 내가 정리해볼게! ${recaps
-            .map((r, i) => `${i + 1}. ${r}`)
-            .join(" ")} 이렇게 ${recaps.length}개나 알게 됐어. 맞지?`;
+  const summary = recapLine(recaps);
 
   return result(state, {
     mood: recaps.length > 0 ? "happy" : "shy",
@@ -1513,9 +1586,27 @@ export async function finishTeaching(
     // 깨달음과 총정리는 화제가 다르다 — 말풍선을 나눈다.
     bubbles: carry ? [carry.mormi, summary] : undefined,
     effects: carry?.effects ?? [],
-    input: "stamp",
+    // 도장은 '복창이 맞는지 아이가 확인하는 의식'이다. 가르친 것이 없으면
+    // 확인할 대상이 없으므로 도장 자체가 성립하지 않는다 — 인사로 닫는다.
+    input: recaps.length === 0 ? "bye" : "stamp",
     starNote: carry?.starNote,
   });
+}
+
+/**
+ * 마무리 복창 문장.
+ *
+ * 사전 재확인 뒤 다시 정리해줄 때도 **똑같은 문장**이어야 한다 — 아이가
+ * "아니야"를 누른 것은 정리가 바뀌길 바란 것이 아니라 확인하고 싶었던 것이다.
+ */
+function recapLine(recaps: string[]): string {
+  return recaps.length === 0
+    ? "오늘은 여기까지 하자! 내일 또 궁금한 거 물어볼게."
+    : recaps.length === 1
+      ? `오늘 배운 거 내가 정리해볼게. 음… ${recaps[0]} 맞지?`
+      : `오늘 배운 거 내가 정리해볼게! ${recaps
+          .map((r, i) => `${i + 1}. ${r}`)
+          .join(" ")} 이렇게 ${recaps.length}개나 알게 됐어. 맞지?`;
 }
 
 // ---------- 숙제 검사 (시험지 형식으로의 전이 확인) ----------
@@ -1669,11 +1760,10 @@ async function onMisconceptionAgreed(
 
   if (state.phase === "reconfirm") {
     // C3: 그림으로도 못 알아챔 → 궁금해 사전 + 재가르침 요청.
-    // 사전 내용은 교과 데이터의 개념 문장만 쓴다 — 사전은 지어내지 않는다.
+    // 사전 내용은 콘텐츠에 고정된 문장만 쓴다 — 사전은 지어내지도, 매번 달라지지도 않는다.
     state.phase = "reteach";
     state.ladder = Math.max(0, state.ladder - 2);
-    const found = lookupDictionary(it.keywords);
-    const concept = found.concept ?? it.correct_recap;
+    const concept = dictionaryLine(it);
     const mormi = await speak(state,
       `"우리 궁금해 사전한테 물어보자!"라고 말하고, 사전 내용("${concept}")을 본 뒤 "엥, 우리 반대로 알고 있었네! 내가 이상하게 물어봤지?"라며 비난을 네가 흡수하라. 그리고 아이에게 다시 가르쳐 달라고 청하라: "${it.reask_by_ladder[String(state.ladder)]}"`,
       childText,
@@ -1725,8 +1815,7 @@ async function onStuck(
     state.exceptionCount += 1;
     state.phase = "reteach";
     state.ladder = 0;
-    const found = lookupDictionary(it.keywords);
-    const concept = found.concept ?? it.correct_recap;
+    const concept = dictionaryLine(it);
     const mormi = await speak(state,
       `"우리 둘 다 막혔네! 그럼 같이 찾아볼까? 궁금해 사전아~"라고 말하고, 사전을 펼친 뒤 아이에게 "여기 뭐라고 써 있어?"라고 물어 아이가 읽어서 알려주게 하라. 사전 내용: "${concept}"`,
       childText,
@@ -1845,8 +1934,8 @@ async function beginDictation(
   childText: string,
 ): Promise<TurnResult> {
   const it = item(state);
-  const found = lookupDictionary(it.keywords);
-  const target = found.concept ?? it.correct_recap;
+  // 화면 사전에 뜨는 문장과 아이가 따라 읽는 문장은 반드시 같아야 한다.
+  const target = dictionaryLine(it);
 
   state.phase = "dictation";
   state.dictationText = target;

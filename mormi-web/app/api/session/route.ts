@@ -9,7 +9,7 @@ import {
   askQuestion,
   continueTeaching,
   finishTeaching,
-  finishSession,
+  stampSession,
   getSession,
   processTurn,
   reviveSession,
@@ -37,7 +37,7 @@ class UnknownAction extends Error {}
  *  turn       말하기 / 선택지 / '모르겠어'       → 가르치기 사이클
  *  continueTeaching '하나 더 가르쳐줄래!'        → 다음 개념
  *  finishTeaching   '오늘은 여기까지'            → 총정리
- *  stamp      '맞아' 도장                        → 세션 종료
+ *  stamp      '맞아'/'아니야' 도장                → 세션 종료 (아니야 1회는 사전 재확인)
  */
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -91,7 +91,8 @@ export async function POST(req: NextRequest) {
       case "finishTeaching":
         return finishTeaching(state);
       case "stamp":
-        return Promise.resolve(finishSession(state));
+        // agree 를 보내지 않는 구클라이언트는 '맞아'로 본다 — 세션은 닫혀야 한다.
+        return stampSession(state, body.agree !== false);
       case "turn":
         return processTurn(
           state,

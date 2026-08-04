@@ -24,6 +24,7 @@ type InputMode =
   | "stamp"
   | "continue"
   | "covers"
+  | "bye"
   | "none";
 
 type Effect =
@@ -54,6 +55,8 @@ interface Turn {
   mormiName?: string;
   childName?: string;
   bubbles?: string[];
+  /** 사전으로 이미 재확인한 뒤 — '아니야'를 다시 내주지 않는다 */
+  agreeOnly?: boolean;
   dictation?: string;
   /** 서버가 되돌려준 세션 상태 — 다음 요청에 그대로 실어 보낸다 (서버리스 대응) */
   state?: unknown;
@@ -606,25 +609,48 @@ export default function Home() {
                 onClick={() => {
                   // 세션이 닫히는 지점. 상세(끝낸 단원 수 등)는 trackTurnDiff 가
                   // 남긴 마지막 상태로 충분하다.
-                  track("session_closed");
-                  void post({ action: "stamp" });
+                  track("session_closed", { agree: true });
+                  void post({ action: "stamp", agree: true });
                 }}
                 disabled={busy}
                 className="flex-1 rounded-full bg-[#5ec9b0] py-3.5 text-[15px] text-white hover:bg-[#4fb69e]"
               >
                 맞아! (도장 찍기)
               </button>
-              <button
-                onClick={() => {
-                  track("session_closed");
-                  void post({ action: "stamp" });
-                }}
-                disabled={busy}
-                className="rounded-full border-2 border-stone-300 px-6 py-3.5 text-sm text-stone-500"
-              >
-                아니야
-              </button>
+              {/*
+                사전으로 이미 재확인한 뒤에는 '아니야'를 내주지 않는다.
+                판정은 사전이 했고, 같은 부정을 계속 받으면 세션이 닫히지 않는다.
+              */}
+              {!turn?.agreeOnly && (
+                <button
+                  onClick={() => {
+                    track("recap_challenged");
+                    void post({ action: "stamp", agree: false });
+                  }}
+                  disabled={busy}
+                  className="rounded-full border-2 border-stone-300 px-6 py-3.5 text-sm text-stone-500"
+                >
+                  아니야
+                </button>
+              )}
             </div>
+          )}
+
+          {/*
+            가르친 것이 없는 세션 — 확인할 복창이 없으니 도장도 없다.
+            인사만 하고 닫는다.
+          */}
+          {input === "bye" && (
+            <button
+              onClick={() => {
+                track("session_closed", { taught: false });
+                void post({ action: "stamp" });
+              }}
+              disabled={busy}
+              className="w-full rounded-full bg-[#5ec9b0] py-3.5 text-[15px] text-white hover:bg-[#4fb69e] disabled:opacity-40"
+            >
+              내일 또 만나!
+            </button>
           )}
 
           {input === "none" && (

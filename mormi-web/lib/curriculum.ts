@@ -1,3 +1,4 @@
+// 런타임 조회는 폐지 — 사전 문장은 콘텐츠에 고정 큐레이션(prep). 이 파일은 KB 소싱 풀로만 남긴다.
 import kb from "@/content/curriculum/4수01-11.json";
 
 /**
