@@ -39,6 +39,7 @@ interface TurnStateView {
   dictationText?: string | null;
   generalizedNote?: { coauthored: boolean } | null;
   generalizeChoiceCorrect?: boolean;
+  generalizeChallenged?: boolean;
   ladder?: number;
   phase?: string;
   scene?: string;
@@ -150,6 +151,12 @@ export function trackTurnDiff(
         ? "choice_only"
         : "none";
     track("generalize_result", { outcome, unit });
+  }
+
+  // 규칙을 틀리게 골라 모르미가 모순을 짚고 사전을 펼친 순간.
+  // generalize_result 와 짝지어 보면 '사전 확인 뒤 고쳐 골랐는가'를 알 수 있다.
+  if (!p.generalizeChallenged && n.generalizeChallenged === true) {
+    track("generalize_challenged", { unit });
   }
 
   // 첫 만남

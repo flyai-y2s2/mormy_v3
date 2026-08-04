@@ -129,6 +129,12 @@ interface Item {
   generalize_choice_answer?: string;
   /** 아이가 고른 규칙을 문장으로 확정할 때 쓰는 원문. 노트에도 이 문장이 실린다 */
   generalize_rule_line?: string;
+  /**
+   * 아이가 규칙을 틀리게 골랐을 때 모르미가 순진하게 짚는 모순 한 문장.
+   * 채점이 아니라 "나 헷갈려"이므로 문안이 흔들리면 안 된다 — 화자를 거치지 않고
+   * 이 원문을 그대로 낸다.
+   */
+  generalize_challenge?: string;
   /** 개념별 용어 계약(금칙어·비교축 등) — 콘텐츠 쪽 메모, 코드가 해석하지 않는다 */
   terms?: Record<string, unknown>;
   generalized_target?: string;
@@ -298,6 +304,11 @@ export interface SessionState {
   /** 1단계에서 규칙을 옳게 골랐는가 — 설명까지 못 가도 이만큼은 정직하게 귀속한다 */
   generalizeChoiceCorrect: boolean;
   /**
+   * 1단계에서 틀리게 고른 규칙에 모르미가 모순을 짚고 사전을 펼쳤는가.
+   * 개념마다 한 번뿐이다 — 같은 자리에서 두 번 되물으면 아이는 추궁당한다.
+   */
+  generalizeChallenged?: boolean;
+  /**
    * 아이가 "그게 무슨 말이야?"라고 되물어 질문을 다시 풀어준 횟수.
    * 되물음은 회피가 아니라 참여다 — 예산·사다리를 쓰지 않되, 무한 반복은 막는다.
    */
@@ -450,6 +461,7 @@ export function startSession(
     generalizeStem: null,
     generalizeStage: null,
     generalizeChoiceCorrect: false,
+    generalizeChallenged: false,
     clarifyCount: 0,
     offTopicCount: 0,
     // 프로필의 주인은 화면이다.
@@ -1165,8 +1177,13 @@ async function onClarify(
  * 여기서 하는 일은 확정이지 채점이 아니다. 옳게 골랐으면 그 규칙 문장을
  * 소리 내어 확정하고 곧바로 "왜 그런지 네 말로" 청한다(2단계).
  * 틀리게 골랐으면 **그 규칙을 절대 확정하지 않는다** — 틀린 문장을 모르미의
- * 입으로 옮기면 아이가 그것을 배운 것으로 가져간다. 여기서 교정하지도 않는다.
- * 세션 끝의 총정리 복창이 올바른 규칙으로 오늘을 닫아준다.
+ * 입으로 옮기면 아이가 그것을 배운 것으로 가져간다.
+ *
+ * 그렇다고 조용히 넘어가서도 안 된다. 인정·감사 발화로 닫으면 아이는 방금
+ * 주장한 오개념을 모르미에게 승인받은 채로 세션을 나간다. 그래서 채점하지 않되
+ * 모순은 짚는다: 모르미가 순진하게 헷갈려 하고(사전 확인), 같은 선택지를 한 번
+ * 더 받고(재탭), 그래도 안 되면 사전 문장을 같이 읽는다(따라 읽기).
+ * 판정하는 주체는 끝까지 모르미가 아니라 사전이다.
  */
 async function onGeneralizeChoice(
   state: SessionState,
@@ -1180,8 +1197,45 @@ async function onGeneralizeChoice(
     !!it.generalize_choice_answer &&
     childText.trim() === it.generalize_choice_answer;
 
-  // 못 고르겠다거나 다른 규칙을 골랐다 → 규칙 노트 없이 부드럽게 닫는다.
-  if (!correct) return await closeGeneralize(state);
+  // 사전을 같이 본 뒤 옳게 고쳐 골랐다 → 설명(2단계)까지 밀지 않고 여기서 닫는다.
+  // 이미 한 번 헷갈렸던 아이에게 산출까지 더 청하면 되찾은 성공이 다시 부담이 된다.
+  // 고른 규칙은 closeGeneralize → onTaught 가 coauthored 노트로 정직하게 귀속한다.
+  if (correct && state.generalizeChallenged) {
+    state.generalizeChoiceCorrect = true;
+    return await closeGeneralize(state);
+  }
+
+  // 틀리게 골랐다 → 모순을 짚고 사전을 펼친 뒤, 같은 선택지로 한 번 더 받는다.
+  // '모르겠어'는 제외한다 — 주장한 오개념이 없으므로 짚을 모순도 없다.
+  // 문안은 화자를 거치지 않는다: 이 자리에서 LLM이 한 마디만 보태도 채점이나
+  // 정답 흘리기로 새기 쉽다.
+  if (
+    !correct &&
+    !dontKnow &&
+    !state.generalizeChallenged &&
+    !!it.generalize_challenge &&
+    elapsed(state) < HARD_LIMIT_SEC
+  ) {
+    state.generalizeChallenged = true;
+    const challenge = it.generalize_challenge;
+    const ask = currentQuestion(state, it);
+    return result(state, {
+      mood: "puzzled",
+      mormi: `${challenge}\n\n${ask}`,
+      bubbles: [challenge, ask],
+      effects: [{ type: "dictionary_open", concept: dictionaryLine(it) }],
+      ...inputFor(state),
+    });
+  }
+
+  // 남은 경로는 전부 사전 문장 따라 읽기로 넘긴다:
+  // 재탭도 틀림 · 사전을 보고도 모르겠음 · 첫 탭이 '모르겠어' · 예산이나 문안이 없음.
+  // 규칙을 못 고른 채 닫는 대신 사전 문장을 아이 입으로 산출하게 해 정답으로 닫는다.
+  if (!correct) {
+    // 일반화 단계를 떠난다 — 따라 읽기 중에 규칙 선택지를 다시 내주면 안 된다.
+    state.generalizeStage = null;
+    return await beginDictation(state, childText, { fromGeneralize: true });
+  }
 
   state.generalizeChoiceCorrect = true;
   const rule = it.generalize_rule_line ?? it.generalize_choice_answer!;
@@ -1205,9 +1259,9 @@ async function onGeneralizeChoice(
 }
 
 /**
- * 일반화 종료 공통 — 규칙까지는 못 갔지만 답은 이미 맞혔다.
- * 받은 만큼만 인정하고 닫는다. 아이의 말을 넘겨주지 않는 이유는,
- * 틀리게 고른 선택지를 모르미가 되받아 말하지 않게 하기 위해서다.
+ * 일반화 종료 — 규칙은 골랐지만 설명(2단계)까지는 가지 않고 닫는다.
+ * 아이의 말을 넘겨주지 않는 이유는, 탭한 선택지를 모르미가 되받아 말하지
+ * 않게 하기 위해서다(고른 것은 산출이 아니다).
  */
 async function closeGeneralize(state: SessionState): Promise<TurnResult> {
   return await onTaught(state, "", undefined, { viaTap: true });
@@ -1305,6 +1359,7 @@ function beginItem(state: SessionState, it: Item): void {
   state.generalizeStem = null;
   state.generalizeStage = null;
   state.generalizeChoiceCorrect = false;
+  state.generalizeChallenged = false;
   state.clarifyCount = 0;
   state.exceptionCount = 0;
 }
@@ -1493,7 +1548,9 @@ async function onTaught(
       ruleFromChoice
         ? // 아이가 고른 규칙으로 닫는다. 설명은 못 들었으니 새로 알아낸 척하지 말고,
           // 아까 아이가 짚어준 그 문장으로만 마무리한다.
-          `아까 아이가 골라준 규칙("${noteText}") 덕분에 오늘 이걸 알게 됐다. 그 문장을 그대로 한 번 더 소리 내어 확인하고, 알려줘서 고맙다고 말하라. 우리 둘이 같이 만든 문장이니 별노트에 적어두자고 하라. **아이가 말하지 않은 이유나 새로운 내용을 절대 덧붙이지 마라.**`
+          // 사전을 같이 펼쳐본 뒤에 골라준 규칙이면 그 맥락을 담는다.
+          // 단, 아이가 처음에 헷갈렸다는 사실은 절대 입에 올리지 않는다.
+          `아까 아이가 골라준 규칙("${noteText}") 덕분에 오늘 이걸 알게 됐다. 그 문장을 그대로 한 번 더 소리 내어 확인하고, 알려줘서 고맙다고 말하라. 우리 둘이 같이 만든 문장이니 별노트에 적어두자고 하라. **아이가 말하지 않은 이유나 새로운 내용을 절대 덧붙이지 마라.**${state.generalizeChallenged ? " 아까 네가 헷갈려서 궁금해 사전을 같이 펼쳐봤고, 그 덕분에 둘이 같이 알게 됐다는 맥락을 담아라. **아이가 헷갈렸다거나 처음에 잘못 골랐다는 말은 절대 하지 마라** — 헷갈린 쪽은 너다." : ""}`
         : noteCoauthored
         ? `네가 궁금해서 묻던 문장의 끝을 아이가 "${childText}"라고 완성해줬다. 완성된 문장("${noteText}")을 소리 내어 확인하며 "아~!" 하고 깨닫고, 아이 덕분에 알게 됐다고 고마움을 표현하라. 우리 둘이 같이 만든 문장이니 별노트에 적어두자고 말하라.`
         : `아이의 가르침("${noteText}")을 그대로 적용해 다시 풀어서 맞히고, "아~!" 하고 깨달아라. **단, 아이가 말해 준 내용에서 곧장 따라 나오는 것까지만 말하라 — 아이의 말만으로 정해지지 않는 결론(예: 어느 쪽이 더 큰지)을 네가 채워서 단정하지 마라.** 아이의 말을 인용하며 고마움을 구체적으로 표현하고, 별노트에 적어둔다고 말하라. 오늘 배운 것을 정리하는 말은 하지 마라 — 그건 나중에 한다.${recast}${factGuard}${wasReteach ? " 아까는 우리 둘 다 헷갈렸는데 이제 알겠다는 뉘앙스를 담아라." : ""}`,
@@ -1938,6 +1995,9 @@ function splitForCoRead(text: string): { lead: string; tail: string } {
 async function beginDictation(
   state: SessionState,
   childText: string,
+  // fromGeneralize: 규칙 고르기에서 넘어온 경우. 답은 이미 맞힌 아이라
+  // "아직도 잘 모르겠어"가 어긋난다 — 규칙 쪽이 헷갈린다고만 말한다.
+  opts?: { fromGeneralize?: boolean },
 ): Promise<TurnResult> {
   const it = item(state);
   // 화면 사전에 뜨는 문장과 아이가 따라 읽는 문장은 반드시 같아야 한다.
@@ -1946,6 +2006,20 @@ async function beginDictation(
   state.phase = "dictation";
   state.dictationText = target;
   state.dictationTries = 0;
+
+  // 일반화에서 온 진입 발화는 화자를 거치지 않는다. 방금 틀리게 고른 규칙이
+  // 대화에 남아 있어, LLM이 한 마디만 보태도 그 규칙을 짚거나 정답을 흘리기 쉽다.
+  if (opts?.fromGeneralize) {
+    const mormi =
+      "음… 나 아직 규칙은 좀 헷갈려. 우리 궁금해 사전에 뭐라고 써 있는지 같이 볼까?\n여기 이 문장, 네가 한 번만 읽어주면 안 될까?";
+    return result(state, {
+      mood: "shy",
+      mormi,
+      effects: [{ type: "dictionary_open", concept: target }],
+      dictation: target,
+      input: "mic",
+    });
+  }
 
   const mormi = await speak(state,
     `아직도 잘 모르겠다고 솔직하게 말하고, 사전에 적힌 문장을 아이가 소리 내어 읽어(적어) 알려달라고 부탁하라. 예: "그런가…? 나 아직도 좀 헷갈려. 여기 사전에 뭐라고 써 있는지 한 번만 읽어주면 안 될까?" (이 예시를 그대로 베끼지 말고 네 말로.)
