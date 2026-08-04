@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Gowun_Dodum } from "next/font/google";
 import localFont from "next/font/local";
+import Analytics from "./analytics-provider";
 import "./globals.css";
 
 // 본문 — 둥글고 아이 친화적인 한글 서체
@@ -34,6 +35,8 @@ export default function RootLayout({
       className={`${bodyFont.variable} ${handFont.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* 계측 — 키가 없으면 조용히 꺼진다 (렌더 결과 없음) */}
+        <Analytics />
         {children}
         {/* 개발 단계 고지 — 아이가 아니라 어른(참관자·심사위원)에게 하는 말이므로 작고 조용하게 */}
         <footer className="px-4 pb-3 text-center text-[11px] leading-relaxed text-stone-400">

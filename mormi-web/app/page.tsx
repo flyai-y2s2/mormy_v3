@@ -6,6 +6,7 @@ import { ClosedBook, OpenBook } from "@/components/DictionaryBook";
 import { FractionPizza, FractionCards } from "@/components/FractionPizza";
 import { StarNote } from "@/components/StarNote";
 import { withObject } from "@/lib/korean";
+import { track, trackTurnDiff } from "@/lib/analytics";
 import type { Mood } from "@/components/Mormi";
 
 type Scene =
@@ -139,6 +140,13 @@ export default function Home() {
     setStreaming(null);
     setFailed(false);
 
+    // 계측 — 요청 직전 상태를 떠 둔다. 응답 상태와 비교하는 것만이
+    // '무슨 일이 있었는지'의 정직한 근거다 (아이 말은 절대 싣지 않는다).
+    const prevState = stateRef.current;
+    const action = String(body.action ?? "");
+    const t0 = performance.now();
+    let firstTokenMs: number | null = null;
+
     let data: (Turn & { sessionId?: string }) | null = null;
     try {
       const res = await fetch("/api/session", {
@@ -165,6 +173,8 @@ export default function Home() {
           const payload = /data: ([\s\S]*)/.exec(raw)?.[1];
           if (!ev || payload === undefined) continue;
           if (ev === "token") {
+            // 첫 글자가 뜨기까지 걸린 시간 — 아이가 실제로 기다린 시간이다
+            if (firstTokenMs === null) firstTokenMs = Math.round(performance.now() - t0);
             acc += JSON.parse(payload) as string;
             setStreaming(acc);
           } else if (ev === "done") {
@@ -180,6 +190,7 @@ export default function Home() {
       setBusy(false);
       setStreaming(null);
       setFailed(true);
+      track("turn_failed", { action });
       return;
     }
 
@@ -187,6 +198,15 @@ export default function Home() {
     setStreaming(null);
     if (data.sessionId) setSid(data.sessionId);
     if (data.state) stateRef.current = data.state;
+
+    // 상태 diff 로 이번 턴에 무슨 일이 있었는지 남긴다.
+    // childText 는 어떤 형태로도 넘기지 않는다 — 구조 플래그만 전달한다.
+    trackTurnDiff(action, prevState, data.state, {
+      ms: Math.round(performance.now() - t0),
+      firstTokenMs,
+      viaTap: Boolean(body.viaTap),
+      dontKnow: Boolean(body.dontKnow),
+    });
     // 프로필은 브라우저가 보관한다 — 다음 방문(이틀째)에 서버로 되돌려준다.
     if (data.profile) {
       try {
@@ -252,6 +272,8 @@ export default function Home() {
     setSid(data.sessionId);
     setTurn(data);
     if (data.pastNotes) setPast(data.pastNotes);
+    // 지난 별노트가 있으면 이틀째 이후의 방문이다
+    track("session_started", { day2: (data.pastNotes?.length ?? 0) > 0 });
   }
 
   /** viaTap: 선택지를 눌러서 답했는지 (직접 산출과 구분해 서버에 기록) */
@@ -285,6 +307,8 @@ export default function Home() {
       /* 무시 */
     }
     stateRef.current = null;
+    // 데모에서 첫 만남을 다시 보는 경우다 — 분석에서 걸러내기 위한 표식
+    track("profile_reset");
     await newSession();
   }
 
@@ -390,7 +414,10 @@ export default function Home() {
               <Bubble text="어… 나 갑자기 멍해졌어. 방금 거 한 번만 다시 말해줄래?" />
               <div className="flex justify-start">
                 <button
-                  onClick={() => childSaid && say(childSaid, childSaid === "모르겠어…")}
+                  onClick={() => {
+                    track("retry_clicked");
+                    if (childSaid) say(childSaid, childSaid === "모르겠어…");
+                  }}
                   className="rounded-full border-2 border-[#c9a06a] px-4 py-1.5 text-[13px] text-stone-600 hover:bg-[#fffaf0]"
                 >
                   다시 보내기
@@ -407,16 +434,18 @@ export default function Home() {
         <div className="border-t-2 border-[#f0e2c8] bg-[#fffdf7] p-3">
           {input === "button" && (
             <button
-              onClick={() =>
-                post({
-                  action:
-                    scene === "room"
-                      ? "begin"
-                      : scene === "dictionary"
-                        ? "ready"
-                        : "accept",
-                })
-              }
+              onClick={() => {
+                const action =
+                  scene === "room"
+                    ? "begin"
+                    : scene === "dictionary"
+                      ? "ready"
+                      : "accept";
+                // '응, 물어봐' — 여기서부터 실제 가르치기가 시작된다.
+                // 정확한 단원 id 는 서버 diff 이벤트가 실어준다.
+                if (action === "accept") track("unit_started");
+                void post({ action });
+              }}
               disabled={busy || !sid}
               className="w-full rounded-full bg-[#5ec9b0] py-3.5 text-[15px] text-white shadow-sm hover:bg-[#4fb69e] disabled:opacity-40"
             >
@@ -437,6 +466,7 @@ export default function Home() {
                     // 아이 말풍선을 이번 선택으로 갱신한다. 안 하면 직전 단계의
                     // 대답("모르미")이 남아 모르미 반응과 어긋나 보인다.
                     setChildSaid(`오늘은 ${withObject(c)} 배웠어!`);
+                    track("unit_selected", { unit: c });
                     void post({ action: "selectUnit", concept: c });
                   }}
                   disabled={busy}
@@ -548,6 +578,7 @@ export default function Home() {
               <button
                 onClick={() => {
                   setChildSaid("하나 더 가르쳐줄래!");
+                  track("continue_more");
                   void post({ action: "continueTeaching" });
                 }}
                 disabled={busy}
@@ -558,6 +589,7 @@ export default function Home() {
               <button
                 onClick={() => {
                   setChildSaid("오늘은 여기까지");
+                  track("continue_finish");
                   void post({ action: "finishTeaching" });
                 }}
                 disabled={busy}
@@ -571,14 +603,22 @@ export default function Home() {
           {input === "stamp" && (
             <div className="flex gap-2">
               <button
-                onClick={() => post({ action: "stamp" })}
+                onClick={() => {
+                  // 세션이 닫히는 지점. 상세(끝낸 단원 수 등)는 trackTurnDiff 가
+                  // 남긴 마지막 상태로 충분하다.
+                  track("session_closed");
+                  void post({ action: "stamp" });
+                }}
                 disabled={busy}
                 className="flex-1 rounded-full bg-[#5ec9b0] py-3.5 text-[15px] text-white hover:bg-[#4fb69e]"
               >
                 맞아! (도장 찍기)
               </button>
               <button
-                onClick={() => post({ action: "stamp" })}
+                onClick={() => {
+                  track("session_closed");
+                  void post({ action: "stamp" });
+                }}
                 disabled={busy}
                 className="rounded-full border-2 border-stone-300 px-6 py-3.5 text-sm text-stone-500"
               >

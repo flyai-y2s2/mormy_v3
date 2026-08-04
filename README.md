@@ -115,3 +115,10 @@ room → unit_select → dictionary(수업 준비) → teaching → closing → 
 - 고정 대사 구간(등장·사전 감탄·오개념 발화·숙제 제시)은 LLM을 호출하지 않는다
 - 터널로 접속할 때 dev 서버가 `/_next/*` 를 막으면
   `next.config.ts` 의 `allowedDevOrigins` 를 확인할 것
+- **계측(PostHog)** — `lib/analytics.ts` 가 세션 흐름을 이벤트로 남긴다.
+  `.env.local` 에 `NEXT_PUBLIC_POSTHOG_KEY` 를 채우면 켜지고, **비워 두면 조용히 꺼진다**
+  (없어도 앱은 완전히 정상 동작한다).
+- 현장 파일럿에서는 주소에 `?child=A1` 처럼 **연구용 아동 코드**를 붙여 기기를 식별한다.
+- 개인정보 규칙: **아이 이름·발화 원문·별노트 문장·모르미 발화는 어떤 이벤트에도 싣지 않는다.**
+  보내는 것은 단원 id, 사다리 숫자, 횟수, 소요 ms, boolean 플래그 같은 구조 데이터뿐이다.
+  (autocapture·페이지뷰·세션 리코딩은 모두 꺼 둔다)
