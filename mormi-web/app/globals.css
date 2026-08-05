@@ -173,6 +173,14 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .notes-modal header p { margin-top: 3px; color: #969a94; font-size: 11px; }
 .notes-modal > header > button { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 12px; background: #f2eee5; color: #73766f; font-size: 21px; }
 .notes-modal__actions { display: flex; margin-top: 16px; justify-content: flex-end; gap: 9px; }
+.note-preview-modal { border: 2px solid #d8e9df; }
+.note-preview-modal > header { margin-bottom: 18px; }
+.note-preview-list { display: grid; gap: 10px; }
+.note-preview-list li { display: grid; grid-template-columns: 34px minmax(0,1fr); align-items: center; gap: 10px; border: 1.5px solid #dce9e2; border-radius: 18px; background: linear-gradient(145deg,#f3fbf6,#fffaf0); padding: 14px 15px; }
+.note-preview-list li > span { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 12px; background: #fff0bf; color: #a57819; }
+.note-preview-list li .ui-icon { width: 19px; height: 19px; }
+.note-preview-list p { color: #27362f; font-size: 17px; font-weight: 750; line-height: 1.55; word-break: keep-all; }
+.note-preview-empty { border-radius: 18px; background: #f5f7f4; padding: 22px; text-align: center; color: #818781; font-size: 14px; }
 
 .hint-backdrop { position: fixed; inset: 0; z-index: 90; display: grid; padding: 18px; place-items: center; background: rgba(47,52,48,.34); backdrop-filter: blur(5px); }
 .hint-modal { position: relative; width: min(100%,440px); border: 1px solid #dfd1ea; border-radius: 28px; background: #fffdf8; padding: 28px; text-align: center; box-shadow: 0 28px 90px rgba(48,37,55,.22); }

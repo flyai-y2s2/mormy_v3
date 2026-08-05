@@ -83,6 +83,7 @@ interface Turn {
 
 type Visual = Extract<Effect, { type: "visual" }>;
 type DialogueEntry = { role: "mormi" | "child"; text: string };
+type NoteEntry = { text: string; coauthored?: boolean };
 
 type SpeechRecognitionResultEvent = {
   results: ArrayLike<{
@@ -129,7 +130,10 @@ export default function Home() {
   const [prepCard, setPrepCard] = useState<string[]>([]);
   const [visual, setVisual] = useState<Visual | null>(null);
   const [dictCard, setDictCard] = useState<string | null>(null);
-  const [notes, setNotes] = useState<{ text: string; coauthored?: boolean }[]>([]);
+  const [notes, setNotes] = useState<NoteEntry[]>([]);
+  const [draftNotes, setDraftNotes] = useState<NoteEntry[]>([]);
+  const [showNotePreview, setShowNotePreview] = useState(false);
+  const [savingNotePreview, setSavingNotePreview] = useState(false);
   const [typing, setTyping] = useState<string | null>(null);
   const [stamped, setStamped] = useState(false);
   const [dialogueHistory, setDialogueHistory] = useState<DialogueEntry[]>([]);
@@ -273,7 +277,17 @@ export default function Home() {
         setTyping(text);
         timer.current = window.setTimeout(
           () => {
-            setNotes((n) => [...n, { text, coauthored }]);
+            const addOnce = (items: NoteEntry[]) =>
+              items.some((note) => note.text === text)
+                ? items
+                : [...items, { text, coauthored }];
+            // 학습 중 만든 문장은 마지막 확인 전까지 임시 보관한다.
+            // 온보딩 기록은 이미 확정된 프로필 정보라 기존처럼 바로 남긴다.
+            if (data.scene === "teaching" || data.scene === "closing") {
+              setDraftNotes(addOnce);
+            } else {
+              setNotes(addOnce);
+            }
             setTyping(null);
           },
           text.length * 55 + 700,
@@ -290,6 +304,9 @@ export default function Home() {
     setVisual(null);
     setDictCard(null);
     setNotes([]);
+    setDraftNotes([]);
+    setShowNotePreview(false);
+    setSavingNotePreview(false);
     setTyping(null);
     setStamped(false);
     setDialogueHistory([]);
@@ -351,6 +368,9 @@ export default function Home() {
     setDialogueHistory([]);
     setShowNotes(false);
     setShowHint(false);
+    setDraftNotes([]);
+    setShowNotePreview(false);
+    setSavingNotePreview(false);
   }
 
   /** viaTap: 선택지를 눌러서 답했는지 (직접 산출과 구분해 서버에 기록) */
@@ -491,13 +511,43 @@ export default function Home() {
       ? "모르미 이름을 직접 정해요"
       : "내 이름을 알려줘요"
     : "글로 쓰거나 말로 알려줘요";
+  const notePreviewItems = [
+    ...draftNotes,
+    ...(typing ? [{ text: typing }] : []),
+    ...(turn?.starNote ? [{ text: turn.starNote }] : []),
+  ].filter(
+    (note, index, items) =>
+      items.findIndex((candidate) => candidate.text === note.text) === index,
+  );
+
+  async function confirmNotePreview() {
+    if (savingNotePreview) return;
+    if (timer.current) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    setNotes((current) => {
+      const next = [...current];
+      for (const note of notePreviewItems) {
+        if (!next.some((item) => item.text === note.text)) next.push(note);
+      }
+      return next;
+    });
+    setDraftNotes([]);
+    setTyping(null);
+    setSavingNotePreview(true);
+    track("session_closed", { agree: true, notePreview: true });
+    await post({ action: "stamp", agree: true });
+    setSavingNotePreview(false);
+    setShowNotePreview(false);
+  }
 
   return (
     <div className="learning-app">
       <header className="app-header">
         <div className="app-brand">
           <span className="app-brand__mark" aria-hidden="true">M</span>
-          <div><strong>모르미</strong><span>내가 가르치는 수학방</span></div>
+          <div><strong>{name}</strong><span>내가 가르치는 수학방</span></div>
         </div>
         <nav className="app-account" aria-label="계정 메뉴">
           <button className="header-pill" onClick={() => setShowNotes(true)}>
@@ -796,10 +846,8 @@ export default function Home() {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  // 세션이 닫히는 지점. 상세(끝낸 단원 수 등)는 trackTurnDiff 가
-                  // 남긴 마지막 상태로 충분하다.
-                  track("session_closed", { agree: true });
-                  void post({ action: "stamp", agree: true });
+                  track("note_preview_opened", { count: notePreviewItems.length });
+                  setShowNotePreview(true);
                 }}
                 disabled={busy}
                 className="primary-action flex-1 py-3.5 text-[15px]"
@@ -874,6 +922,52 @@ export default function Home() {
               <button className="primary-action px-5 py-2.5 text-[13px]" onClick={() => setShowNotes(false)}>닫기</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {showNotePreview && (
+        <div className="notes-backdrop" role="dialog" aria-modal="true" aria-labelledby="note-preview-title">
+          <section className="notes-modal note-preview-modal">
+            <header>
+              <div>
+                <span className="notes-modal__icon"><StarNoteIcon /></span>
+                <div>
+                  <strong id="note-preview-title">별노트에 이렇게 적을게요</strong>
+                  <p>{name}가 오늘 배운 내용이에요.</p>
+                </div>
+              </div>
+            </header>
+
+            {notePreviewItems.length > 0 ? (
+              <ul className="note-preview-list">
+                {notePreviewItems.map((note) => (
+                  <li key={note.text}>
+                    <span><StarNoteIcon /></span>
+                    <p><FractionText text={note.text} /></p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="note-preview-empty">오늘은 새로 적을 문장이 없어요.</p>
+            )}
+
+            <div className="notes-modal__actions">
+              <button
+                className="secondary-action px-4 py-2.5 text-[13px]"
+                onClick={() => setShowNotePreview(false)}
+                disabled={savingNotePreview}
+              >
+                조금 더 볼래
+              </button>
+              <button
+                className="primary-action px-5 py-2.5 text-[13px]"
+                onClick={() => void confirmNotePreview()}
+                disabled={savingNotePreview}
+              >
+                {savingNotePreview ? "별노트에 넣는 중…" : notePreviewItems.length > 0 ? "별노트에 넣고 마치기" : "오늘 공부 마치기"}
+              </button>
+            </div>
+          </section>
         </div>
       )}
 
