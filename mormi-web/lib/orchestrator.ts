@@ -745,7 +745,7 @@ export function selectUnit(state: SessionState, concept: string): TurnResult {
       : [picked.generalized_target ?? picked.correct_recap];
   return result(state, {
     mood: "happy",
-    mormi: "이 규칙 하나만 볼게!",
+    mormi: "",
     effects: [{ type: "dictionary_open", concept: picked.concept }],
     prepCard: card,
     prepVisual: {

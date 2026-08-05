@@ -194,6 +194,10 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .dictionary-popup__title svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .dictionary-popup__rule { margin: 24px auto 20px; max-width: 560px; color: #29352f; font-size: 26px; font-weight: 800; line-height: 1.6; word-break: keep-all; }
 .dictionary-popup__visual { display: flex; min-height: 148px; align-items: center; justify-content: center; gap: 38px; border-radius: 24px; background: linear-gradient(145deg,#eef8f3,#fff5e8); padding: 16px 20px; }
+.scene-dictionary .dictionary-stage { width: 100%; }
+.scene-dictionary .dictionary-popup { width: 100%; max-width: none; padding-inline: 20px; }
+.scene-dictionary .dictionary-popup__visual { width: calc(100% + 16px); margin-inline: -8px; }
+.scene-dictionary .input-dock { padding-inline: 10px !important; }
 
 .mormi-room { border: 1.5px solid #d8e7df; border-radius: 30px; background: linear-gradient(145deg,#eaf7f0 0%,#f3f6fb 62%,#f9f3ec 100%); box-shadow: 0 16px 40px rgba(47,82,65,.09); }
 .stage-aura { position: absolute; top: -90px; left: 10%; width: 340px; height: 250px; border-radius: 50%; background: rgba(255,255,255,.72); filter: blur(4px); }
@@ -254,6 +258,8 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .input-dock { display: flex; min-height: 260px; margin: 0; padding: 18px !important; flex-direction: column; justify-content: center; }
   .scene-room .lesson-workspace,
   .scene-onboarding .lesson-workspace { min-height: clamp(480px,calc(100dvh - 150px),620px); }
+  .scene-dictionary .lesson-workspace { grid-template-columns: 1fr; }
+  .scene-dictionary .input-dock { min-height: 0; }
   .scene-room .lesson-stage-column > .relative,
   .scene-room .mormi-room,
   .scene-room .input-dock,
