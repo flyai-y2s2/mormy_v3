@@ -575,10 +575,12 @@ export function startSession(
 
   // 이틀째부터는 어제까지의 별노트를 그대로 들고 시작한다 —
   // 가르친 것이 남아 있다는 증거가 다음 세션의 동기다.
+  const roomMormiName = state.profile.mormiName || "모르미";
   return {
     sessionId: state.id,
     turn: result(state, {
-      mormi: "",
+      mood: "happy",
+      mormi: `안녕, ${state.profile.childName}! 나는 ${roomMormiName}야.\n오늘 문제를 어떻게 풀면 되는지 알려 줘!`,
       input: "button",
       cover: state.profile.noteCover,
       pastNotes: state.profile.starNotes.map((n) => ({
