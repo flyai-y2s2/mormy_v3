@@ -258,19 +258,19 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .scene-teaching .mormi-room { min-height: 286px; }
   .scene-unit_select .input-dock { justify-content: flex-start; }
 
-  /* 화면 키보드가 올라오면 학습 맥락에 꼭 필요한 문제와 입력만 남긴다.
-     입력을 마치면 모르미 무대가 원래 위치로 자연스럽게 돌아온다. */
-  .learning-app:has(.answer-composer input:focus) .app-header,
-  .learning-app:has(.answer-composer input:focus) + footer { display: none; }
-  .lesson-frame:has(.answer-composer input:focus) .lesson-workspace { grid-template-columns: 1fr; }
-  .lesson-frame:has(.answer-composer input:focus) .lesson-stage-column { display: none; }
-  .lesson-frame:has(.answer-composer input:focus) .input-dock { min-height: 0; padding: 13px 16px !important; }
-  .lesson-frame:has(.answer-composer input:focus) .input-step-heading { display: none; }
-  .lesson-frame:has(.answer-composer input:focus) .problem-board { padding: 10px 14px; }
-  .lesson-frame:has(.answer-composer input:focus) .problem-board__body { margin-top: 4px; grid-template-columns: minmax(0,1fr) 170px; }
-  .lesson-frame:has(.answer-composer input:focus) .problem-board__prompt { margin-top: 3px; font-size: 18px; }
-  .lesson-frame:has(.answer-composer input:focus) .problem-board__visual { padding: 4px 8px; }
-  .lesson-frame:has(.answer-composer input:focus) .problem-board .fraction-pizza { width: 54px !important; }
+  /* 문제가 있는 수업 화면은 '읽기 → 답하기' 순서로 묶는다.
+     문제와 모르미의 질문을 같은 줄에서 보고, 답변은 그 아래 전체 폭을 쓴다. */
+  .lesson-frame:has(> .problem-slot) { display: grid; grid-template-columns: minmax(0,1.06fr) minmax(0,.94fr); align-items: stretch; gap: 12px; }
+  .lesson-frame:has(> .problem-slot) > .problem-slot { min-width: 0; grid-column: 1; grid-row: 1; }
+  .lesson-frame:has(> .problem-slot) > .lesson-workspace { display: contents; }
+  .lesson-frame:has(> .problem-slot) .lesson-stage-column { min-width: 0; grid-column: 2; grid-row: 1; }
+  .lesson-frame:has(> .problem-slot) .input-dock { width: 100%; min-height: 0; grid-column: 1 / -1; grid-row: 2; }
+  .lesson-frame:has(> .problem-slot) .problem-board,
+  .lesson-frame:has(> .problem-slot) .mormi-room { height: 100% !important; min-height: 286px; }
+  .lesson-frame:has(> .problem-slot) .problem-board__body { grid-template-columns: minmax(0,1fr) 170px; }
+  .lesson-frame:has(> .problem-slot) .problem-board .fraction-pizza { width: 62px !important; }
+  .lesson-frame:has(> .problem-slot) .answer-composer__main { grid-template-columns: minmax(0,1fr) 170px; }
+
 }
 
 @media (max-width: 760px) {
