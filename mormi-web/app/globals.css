@@ -252,10 +252,14 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .lesson-workspace { grid-template-columns: minmax(0,1.55fr) minmax(340px,.9fr); align-items: stretch; gap: 12px; }
   .lesson-stage-column { height: 100%; }
   .input-dock { display: flex; min-height: 260px; margin: 0; padding: 18px !important; flex-direction: column; justify-content: center; }
-  .scene-room .lesson-workspace { min-height: clamp(480px,calc(100dvh - 150px),620px); }
+  .scene-room .lesson-workspace,
+  .scene-onboarding .lesson-workspace { min-height: clamp(480px,calc(100dvh - 150px),620px); }
   .scene-room .lesson-stage-column > .relative,
   .scene-room .mormi-room,
-  .scene-room .input-dock { height: 100% !important; }
+  .scene-room .input-dock,
+  .scene-onboarding .lesson-stage-column > .relative,
+  .scene-onboarding .mormi-room,
+  .scene-onboarding .input-dock { height: 100% !important; }
   .problem-board__body { grid-template-columns: minmax(0,1fr) 230px; }
   .problem-board__visual { padding-block: 7px; }
   .problem-board .fraction-pizza { width: 72px !important; }
@@ -270,7 +274,10 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .lesson-frame:has(> .problem-slot) .lesson-stage-column { min-width: 0; grid-column: 2; grid-row: 1; }
   .lesson-frame:has(> .problem-slot) .input-dock { width: 100%; min-height: 0; grid-column: 1 / -1; grid-row: 2; }
   .lesson-frame:has(> .problem-slot) .problem-board,
-  .lesson-frame:has(> .problem-slot) .mormi-room { height: 100% !important; min-height: 286px; }
+  .lesson-frame:has(> .problem-slot) .mormi-room { height: 100% !important; min-height: 330px; }
+  .lesson-frame:has(> .problem-slot) .stage-character { left: 17% !important; }
+  .lesson-frame:has(> .problem-slot) .stage-dialogue.is-desk { left: 34%; right: 3%; max-height: calc(100% - 76px); }
+  .lesson-frame:has(> .problem-slot) .stage-speech { width: 100%; }
   .lesson-frame:has(> .problem-slot) .problem-board { padding: 13px 15px; }
   .lesson-frame:has(> .problem-slot) .problem-board__body { gap: 10px; grid-template-columns: minmax(0,1fr) 142px; }
   .lesson-frame:has(> .problem-slot) .problem-board__prompt { font-size: 18px; }

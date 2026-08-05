@@ -57,7 +57,7 @@ export function Stage({
         }
       >
         <div className="stage-character__shadow" aria-hidden="true" />
-        <Mormi mood={mood} size={atDesk ? 196 : hasDialogue ? 190 : 250} />
+        <Mormi mood={mood} size={atDesk ? 196 : 238} />
       </div>
 
       {dialogue.length > 0 && (
