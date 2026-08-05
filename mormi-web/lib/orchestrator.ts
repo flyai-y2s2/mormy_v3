@@ -778,7 +778,7 @@ export function readyToTeach(state: SessionState): TurnResult {
   const it = item(state);
   return result(state, {
     mood: "shy",
-    mormi: "나도 헷갈려. 알려 줄래?",
+    mormi: "이 문제, 어떻게 풀면 돼?\n나한테 알려 줘!",
     deskCards: deskCardsOf(it),
     input: "button",
   });
