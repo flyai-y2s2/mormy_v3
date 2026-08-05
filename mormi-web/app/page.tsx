@@ -64,6 +64,7 @@ interface Turn {
   cover?: string;
   mormiName?: string;
   childName?: string;
+  nameTarget?: "child" | "mormi";
   bubbles?: string[];
   /** 사전으로 이미 재확인한 뒤 — '아니야'를 다시 내주지 않는다 */
   agreeOnly?: boolean;
@@ -483,6 +484,11 @@ export default function Home() {
       : input === "continue"
         ? "다음 활동을 골라요"
         : "버튼을 눌러요";
+  const answerInputLabel = onboarding
+    ? turn?.nameTarget === "mormi"
+      ? "모르미 이름을 직접 정해요"
+      : "내 이름을 알려줘요"
+    : "글로 쓰거나 말로 알려줘요";
 
   return (
     <div className="learning-app">
@@ -650,7 +656,7 @@ export default function Home() {
                     key={c}
                     onClick={() => say(c, false, true)}
                     disabled={busy}
-                    className="choice-card min-h-[82px] px-4 py-5 text-[21px] disabled:opacity-40"
+                    className={`choice-card min-h-[82px] px-4 py-5 text-[21px] disabled:opacity-40 ${onboarding && c === "직접 정할래" ? "onboarding-custom-name" : ""}`}
                   >
                     <FractionText text={c} />
                   </button>
@@ -695,7 +701,7 @@ export default function Home() {
           )}
           {input === "mic" && (
             <div className="answer-composer">
-              <label className="answer-composer__label" htmlFor="child-answer">글로 쓰거나 말로 알려줘요</label>
+              <label className="answer-composer__label" htmlFor="child-answer">{answerInputLabel}</label>
               <div className="answer-composer__main">
                 <input
                   id="child-answer"
@@ -711,7 +717,9 @@ export default function Home() {
                   disabled={busy}
                   placeholder={
                     onboarding
-                      ? "이름을 알려주세요…"
+                      ? turn?.nameTarget === "mormi"
+                        ? "모르미 이름을 써요…"
+                        : "내 이름을 알려줘요…"
                       : dictation
                         ? "사전 문장을 따라 써요…"
                         : "여기에 답을 써요…"

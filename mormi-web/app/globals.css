@@ -288,6 +288,15 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .scene-onboarding .lesson-stage-column > .relative,
   .scene-onboarding .mormi-room,
   .scene-onboarding .input-dock { height: 100% !important; }
+  /* 첫 만남에서는 대화가 캐릭터 옆으로 흩어지지 않게 한곳에 모은다.
+     아이는 위에서 말을 읽고 바로 아래의 모르미를 보게 된다. */
+  .scene-onboarding .stage-character { right: auto; bottom: 1%; left: 50% !important; transform: translateX(-50%) scale(.92); }
+  .scene-onboarding .stage-dialogue.is-room { top: 5%; right: auto; bottom: auto; left: 50%; width: min(82%,520px); max-height: 48%; translate: -50% 0; }
+  .scene-onboarding .stage-speech,
+  .scene-onboarding .stage-child-speech { max-width: 88%; }
+  .scene-onboarding .stage-speech { align-self: center; text-align: center; }
+  .scene-onboarding .stage-speech:last-of-type::after { left: 50%; margin-left: -7px; }
+  .scene-onboarding .onboarding-custom-name { grid-column: 1 / -1; }
   .problem-board__body { grid-template-columns: minmax(0,1fr) 230px; }
   .problem-board__visual { padding-block: 7px; }
   .problem-board .fraction-pizza { width: 72px !important; }

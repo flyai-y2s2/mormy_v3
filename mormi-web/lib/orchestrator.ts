@@ -70,6 +70,8 @@ export interface TurnResult {
   cover?: string;
   /** 아이가 지어준 이름 — 화면의 모든 문구가 이 이름을 쓴다 */
   mormiName?: string;
+  /** 온보딩의 이름 입력창이 누구의 이름을 묻는지 화면에 알려준다 */
+  nameTarget?: "child" | "mormi";
   /** 아이 이름 — 별노트 귀속 표기에 쓴다 */
   childName?: string;
   /**
@@ -553,7 +555,7 @@ export function startSession(
         mood: "happy",
         mormi: "이제 내 이름을 골라 줘.",
         input: "choices",
-        choices: MORMI_NAMES,
+        choices: MORMI_NAME_CHOICES,
       }),
     };
   }
@@ -569,6 +571,7 @@ export function startSession(
         mormi:
           "안녕! 나는 배우는 걸 좋아해.\n네 이름은 뭐야?",
         input: "mic",
+        nameTarget: "child",
       }),
     };
   }
@@ -596,6 +599,8 @@ export function startSession(
 
 const NOTE_COVERS = ["별", "로켓", "공룡", "고양이"];
 const MORMI_NAMES = ["모르미", "꼬미", "알미", "뭉이"];
+const CUSTOM_MORMI_NAME = "직접 정할래";
+const MORMI_NAME_CHOICES = [...MORMI_NAMES, CUSTOM_MORMI_NAME];
 
 const NAME_SCHEMA = {
   type: "object",
@@ -667,12 +672,20 @@ export async function onboard(
         mood: "happy",
         mormi: `${p.noteCover} 표지, 좋아!\n이제 내 이름을 골라 줘.`,
         input: "choices",
-        choices: MORMI_NAMES,
+        choices: MORMI_NAME_CHOICES,
       });
     }
 
     // 이름을 받는다 → 메인 룸으로
     default: {
+      if (said === CUSTOM_MORMI_NAME) {
+        return result(state, {
+          mood: "happy",
+          mormi: "좋아!\n나를 부르고 싶은 이름을 직접 써 줘.",
+          input: "mic",
+          nameTarget: "mormi",
+        });
+      }
       p.mormiName = said || MORMI_NAMES[0];
       state.scene = "room";
       state.onboardStep = 3;
