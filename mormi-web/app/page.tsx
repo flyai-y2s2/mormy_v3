@@ -81,6 +81,7 @@ interface Turn {
 }
 
 type Visual = Extract<Effect, { type: "visual" }>;
+type DialogueEntry = { role: "mormi" | "child"; text: string };
 
 type SpeechRecognitionResultEvent = {
   results: ArrayLike<{
@@ -130,7 +131,7 @@ export default function Home() {
   const [notes, setNotes] = useState<{ text: string; coauthored?: boolean }[]>([]);
   const [typing, setTyping] = useState<string | null>(null);
   const [stamped, setStamped] = useState(false);
-  const [childSaid, setChildSaid] = useState<string | null>(null);
+  const [dialogueHistory, setDialogueHistory] = useState<DialogueEntry[]>([]);
   const [past, setPast] = useState<{ text: string; day: number; coauthored?: boolean }[]>([]);
   // 아직 생성 중인 모르미 발화 (SSE 로 들어오는 중)
   const [streaming, setStreaming] = useState<string | null>(null);
@@ -229,6 +230,13 @@ export default function Home() {
     if (data.sessionId) setSid(data.sessionId);
     if (data.state) stateRef.current = data.state;
 
+    const newMormiMessages = (data.bubbles?.length ? data.bubbles : [data.mormi])
+      .filter(Boolean)
+      .map((message) => ({ role: "mormi" as const, text: message }));
+    if (newMormiMessages.length > 0) {
+      setDialogueHistory((history) => [...history, ...newMormiMessages]);
+    }
+
     // 상태 diff 로 이번 턴에 무슨 일이 있었는지 남긴다.
     // childText 는 어떤 형태로도 넘기지 않는다 — 구조 플래그만 전달한다.
     trackTurnDiff(action, prevState, data.state, {
@@ -283,7 +291,7 @@ export default function Home() {
     setNotes([]);
     setTyping(null);
     setStamped(false);
-    setChildSaid(null);
+    setDialogueHistory([]);
     setPast([]);
     setStreaming(null);
     setFailed(false);
@@ -305,6 +313,10 @@ export default function Home() {
     stateRef.current = data.state ?? null;
     setSid(data.sessionId);
     setTurn(data);
+    const firstMessages = (data.bubbles?.length ? data.bubbles : [data.mormi])
+      .filter(Boolean)
+      .map((message) => ({ role: "mormi" as const, text: message }));
+    setDialogueHistory(firstMessages);
     if (data.pastNotes) setPast(data.pastNotes);
     // 지난 별노트가 있으면 이틀째 이후의 방문이다
     track("session_started", { day2: (data.pastNotes?.length ?? 0) > 0 });
@@ -333,13 +345,17 @@ export default function Home() {
     setActiveAccount(null);
     setSid(null);
     setTurn(null);
+    setDialogueHistory([]);
     setShowNotes(false);
     setShowHint(false);
   }
 
   /** viaTap: 선택지를 눌러서 답했는지 (직접 산출과 구분해 서버에 기록) */
   function say(childText: string, dontKnow = false, viaTap = false) {
-    setChildSaid(dontKnow ? "모르겠어…" : childText);
+    const visibleText = dontKnow ? "모르겠어…" : childText;
+    if (visibleText) {
+      setDialogueHistory((history) => [...history, { role: "child", text: visibleText }]);
+    }
     // 온보딩은 가르치기 사이클이 아니라 별도 스텝 머신을 탄다.
     if (turn?.scene === "onboarding") {
       void post({ action: "onboard", childText });
@@ -449,21 +465,15 @@ export default function Home() {
   // 사전 문장 따라 하기 — 안내 문구는 입력 방식에 따라 화면이 고른다.
   // (음성 모드가 생기면 "따라 읽어볼까?" 로 바뀐다)
   const dictation = turn?.dictation;
-  const settledMormiSpeech = turn?.bubbles?.length
-    ? turn.bubbles
-    : [turn?.mormi ?? (scene === "room" ? `${activeAccount.name}, 오늘 배운 걸 알려 줘!` : "")].filter(Boolean);
-  const childDialogue = childSaid ? [{ role: "child" as const, text: childSaid }] : [];
-  const currentMormiDialogue = settledMormiSpeech.map((message) => ({ role: "mormi" as const, text: message }));
-  const stageDialogue = busy || streaming || failed
+  const stageDialogue: DialogueEntry[] = busy || streaming || failed
     ? [
-        ...currentMormiDialogue,
-        ...childDialogue,
+        ...dialogueHistory,
         {
-          role: "mormi" as const,
-          text: failed ? "잠깐 멍해졌어. 다시 보내 줄래?" : streaming ?? "곰곰이 생각하는 중…",
+          role: "mormi",
+          text: failed ? "잠깐 멍해졌어. 다시 말해 줄래?" : streaming ?? "곰곰이 생각하는 중…",
         },
       ]
-    : [...childDialogue, ...currentMormiDialogue];
+    : dialogueHistory;
   const showConversation =
     !sid || Boolean(dictCard && scene !== "dictionary");
   const inputGuide = input === "choices"
@@ -583,7 +593,12 @@ export default function Home() {
                       : "accept";
                 // '응, 물어봐' — 여기서부터 실제 가르치기가 시작된다.
                 // 정확한 단원 id 는 서버 diff 이벤트가 실어준다.
-                if (action === "accept") track("unit_started");
+                if (action === "accept") {
+                  // 준비 단계 문장까지 모두 쌓이면 실제 문제 대화가 묻힌다.
+                  // 문제를 시작하는 순간부터의 대화만 스크롤 기록으로 남긴다.
+                  setDialogueHistory([]);
+                  track("unit_started");
+                }
                 void post({ action });
               }}
               disabled={busy || !sid}
@@ -603,7 +618,7 @@ export default function Home() {
                 <button
                   key={c}
                   onClick={() => {
-                    setChildSaid(null);
+                    setDialogueHistory([]);
                     track("unit_selected", { unit: c });
                     void post({ action: "selectUnit", concept: c });
                   }}
@@ -738,7 +753,7 @@ export default function Home() {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  setChildSaid("하나 더 가르쳐줄래!");
+                  setDialogueHistory((history) => [...history, { role: "child", text: "하나 더 가르쳐줄래!" }]);
                   track("continue_more");
                   void post({ action: "continueTeaching" });
                 }}
@@ -749,7 +764,7 @@ export default function Home() {
               </button>
               <button
                 onClick={() => {
-                  setChildSaid("오늘은 여기까지");
+                  setDialogueHistory((history) => [...history, { role: "child", text: "오늘은 여기까지" }]);
                   track("continue_finish");
                   void post({ action: "finishTeaching" });
                 }}
