@@ -324,8 +324,8 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .lesson-frame:has(> .problem-slot) .stage-character { left: 17% !important; }
   .lesson-frame:has(> .problem-slot) .stage-dialogue.is-desk { left: 34%; right: 3%; max-height: calc(100% - 76px); }
   .lesson-frame:has(> .problem-slot) .stage-speech { width: 100%; }
-  .lesson-frame:has(> .problem-slot) .problem-board { padding: 13px 15px; }
-  .lesson-frame:has(> .problem-slot) .problem-board__body { gap: 10px; grid-template-columns: minmax(0,1fr) 142px; }
+  .lesson-frame:has(> .problem-slot) .problem-board { display: flex; padding: 13px 15px; flex-direction: column; }
+  .lesson-frame:has(> .problem-slot) .problem-board__body { margin-top: 0; flex: 1; gap: 10px; grid-template-columns: minmax(0,1fr) 142px; }
   .lesson-frame:has(> .problem-slot) .problem-board__prompt { font-size: 18px; }
   .lesson-frame:has(> .problem-slot) .problem-board__visual { gap: 7px; padding: 6px; }
   .lesson-frame:has(> .problem-slot) .problem-board .fraction-pizza { width: 55px !important; }
