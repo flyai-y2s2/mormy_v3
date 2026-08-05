@@ -465,7 +465,7 @@ export default function Home() {
       ]
     : [...childDialogue, ...currentMormiDialogue];
   const showConversation =
-    !sid || Boolean(dictCard && scene !== "dictionary") || failed;
+    !sid || Boolean(dictCard && scene !== "dictionary");
   const inputGuide = input === "choices"
     ? "답을 눌러요"
     : input === "mic"
@@ -560,20 +560,6 @@ export default function Home() {
             <p className="mx-auto max-w-md rounded-2xl border border-[#ead7a2] bg-[#fff8df] px-4 py-3 text-[14px] leading-6 text-[#7d622b]">
               <span className="mr-2 rounded-full bg-[#f6c85f] px-2 py-1 text-[11px]">궁금해 사전</span><FractionText text={dictCard} />
             </p>
-          )}
-          {/* 실패를 조용히 넘기지 않는다 — 아이 눈에는 모르미가 같은 질문만 반복하는 것으로 보인다 */}
-          {failed && (
-              <div className="flex justify-center">
-                <button
-                  onClick={() => {
-                    track("retry_clicked");
-                    if (childSaid) say(childSaid, childSaid === "모르겠어…");
-                  }}
-                  className="secondary-action px-5 py-2.5 text-[13px]"
-                >
-                  다시 보내기
-                </button>
-              </div>
           )}
         </div>}
         </div>
