@@ -263,8 +263,11 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .scene-room .lesson-stage-column > .relative,
   .scene-room .mormi-room { width: 100%; height: 100% !important; }
   .scene-room .lesson-stage-column { position: absolute; inset: 0; }
-  .scene-room .stage-character { left: 31% !important; }
-  .scene-room .input-dock { position: absolute; top: 50%; right: 5%; z-index: 20; width: min(38%,390px); height: auto !important; min-height: 0; border: 0; background: transparent; padding: 0 !important; box-shadow: none; transform: translateY(-50%); }
+  .scene-room .stage-character { top: 34%; bottom: auto; left: 50% !important; }
+  .scene-room .stage-dialogue.is-room { top: 6%; right: auto; bottom: auto; left: 50%; width: min(72%,500px); max-height: 27%; translate: -50% 0; }
+  .scene-room .stage-speech { width: 100%; text-align: center; }
+  .scene-room .stage-speech:last-of-type::after { left: 50%; margin-left: -7px; }
+  .scene-room .input-dock { position: absolute; right: auto; bottom: 7%; left: 50%; z-index: 20; width: min(38%,390px); height: auto !important; min-height: 0; border: 0; background: transparent; padding: 0 !important; box-shadow: none; translate: -50% 0; }
   .scene-room .input-dock .primary-action { min-height: 76px; font-size: 20px; }
 
   /* 단계 선택도 별도의 흰 패널로 떼지 않고 모르미와 같은 방 안에 둔다. */
@@ -291,9 +294,18 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .scene-teaching .mormi-room { min-height: 286px; }
   .scene-unit_select .input-dock { justify-content: flex-start; }
 
+  /* 문제를 푼 뒤의 '다음 활동' 화면도 위쪽에만 붙지 않도록
+     아이패드에서 남은 세로 공간을 무대와 선택 영역이 함께 채운다. */
+  .lesson-frame.scene-teaching:not(:has(> .problem-slot)) { min-height: clamp(620px,calc(100dvh - 150px),850px); }
+  .lesson-frame.scene-teaching:not(:has(> .problem-slot)) > .lesson-workspace { min-height: 0; flex: 1; }
+  .lesson-frame.scene-teaching:not(:has(> .problem-slot)) .lesson-stage-column,
+  .lesson-frame.scene-teaching:not(:has(> .problem-slot)) .lesson-stage-column > .relative,
+  .lesson-frame.scene-teaching:not(:has(> .problem-slot)) .mormi-room,
+  .lesson-frame.scene-teaching:not(:has(> .problem-slot)) .input-dock { height: 100% !important; }
+
   /* 문제가 있는 수업 화면은 '읽기 → 답하기' 순서로 묶는다.
      문제와 모르미의 질문을 같은 줄에서 보고, 답변은 그 아래 전체 폭을 쓴다. */
-  .lesson-frame:has(> .problem-slot) { display: grid; grid-template-columns: minmax(0,.84fr) minmax(0,1.16fr); align-items: stretch; gap: 12px; }
+  .lesson-frame:has(> .problem-slot) { display: grid; min-height: clamp(620px,calc(100dvh - 150px),850px); grid-template-columns: minmax(0,.84fr) minmax(0,1.16fr); grid-template-rows: 330px minmax(220px,1fr); align-items: stretch; gap: 12px; }
   .lesson-frame:has(> .problem-slot) > .problem-slot { min-width: 0; grid-column: 1; grid-row: 1; }
   .lesson-frame:has(> .problem-slot) > .lesson-workspace { display: contents; }
   .lesson-frame:has(> .problem-slot) .lesson-stage-column { min-width: 0; grid-column: 2; grid-row: 1; }

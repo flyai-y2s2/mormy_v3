@@ -591,6 +591,11 @@ export default function Home() {
                     : scene === "dictionary"
                       ? "ready"
                       : "accept";
+                // 시작 인사는 역할 안내로 끝난다. 단계 카드 화면까지 남겨 두면
+                // 새 질문과 겹쳐 전환이 끊겨 보이므로 다음 장면에서는 비운다.
+                if (action === "begin") {
+                  setDialogueHistory([]);
+                }
                 // '응, 물어봐' — 여기서부터 실제 가르치기가 시작된다.
                 // 정확한 단원 id 는 서버 diff 이벤트가 실어준다.
                 if (action === "accept") {

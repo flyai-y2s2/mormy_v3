@@ -714,8 +714,8 @@ export async function beginSession(state: SessionState): Promise<TurnResult> {
 
   const greeting =
     p.sessionCount >= 1 && recent
-      ? `어제 배운 “${recent.text}” 기억해!\n오늘은 뭘 알려 줄래?`
-      : `오늘은 뭘 배웠어? 나한테도 알려줘!`;
+      ? `어제 배운 “${recent.text}” 기억해!\n오늘은 어떤 문제부터 알려 줄래?`
+      : `좋아, 준비됐어!\n오늘은 어떤 문제부터 알려 줄래?`;
 
   return result(state, {
     mood: "happy",
