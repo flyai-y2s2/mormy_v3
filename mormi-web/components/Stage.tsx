@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Mormi, type Mood } from "./Mormi";
 import { FractionText } from "./FractionText";
 
@@ -25,6 +26,13 @@ export function Stage({
 }) {
   const roomHeight = Math.min(400, Math.max(260, 220 + dialogue.length * 54));
   const hasDialogue = dialogue.length > 0;
+  const dialogueRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const node = dialogueRef.current;
+    if (!node) return;
+    node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+  }, [dialogue]);
 
   return (
     <div
@@ -55,6 +63,7 @@ export function Stage({
       {dialogue.length > 0 && (
         <div
           className={`stage-dialogue ${atDesk ? "is-desk" : "is-room"}`}
+          ref={dialogueRef}
           role="log"
           aria-live="polite"
           aria-label="모르미와 나의 대화"

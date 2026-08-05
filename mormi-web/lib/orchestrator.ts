@@ -1785,7 +1785,9 @@ function beginHomework(
   state.homeworkTries = 0;
   state.homeworkItemId = it.id;
 
-  const ask = `아! 맞다, 나 학교에서 숙제도 받아왔는데 여기서 막혔어. 같이 봐줄래?\n\n📄 ${hw.problem}\n\n${hw.mormi_wrong_try}`;
+  // 문제는 위 문제판에 계속 보인다. 말풍선에서 다시 읽지 않고 모르미의
+  // 짧은 생각만 보여, 아이가 같은 긴 문장을 두 번 읽지 않게 한다.
+  const ask = `숙제에서 막혔어. ${hw.mormi_wrong_try}`;
 
   return result(state, {
     mood: "confident",

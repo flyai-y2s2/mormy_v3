@@ -418,22 +418,13 @@ export default function Home() {
       <div className={`lesson-frame scene-${scene} relative flex min-h-[650px] min-w-0 flex-1 flex-col overflow-hidden`}>
         {turn?.problem && (
           <div className="problem-slot">
-            <ProblemBoard problem={turn.problem} />
-            {turn.problem.hint && (
-              <div className="problem-tools">
-                <button
-                  className="dictionary-hint-button"
-                  onClick={() => {
-                    setShowHint(true);
-                    track("hint_opened");
-                  }}
-                >
-                  <BookHintIcon />
-                  <span>궁금해 사전</span>
-                  <small>힌트 보기</small>
-                </button>
-              </div>
-            )}
+            <ProblemBoard
+              problem={turn.problem}
+              onHint={() => {
+                setShowHint(true);
+                track("hint_opened");
+              }}
+            />
           </div>
         )}
 
