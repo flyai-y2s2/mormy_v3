@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Gowun_Dodum } from "next/font/google";
+import { Gowun_Dodum, Jua } from "next/font/google";
 import localFont from "next/font/local";
 import Analytics from "./analytics-provider";
 import "./globals.css";
@@ -7,6 +7,13 @@ import "./globals.css";
 // 본문 — 둥글고 아이 친화적인 한글 서체
 const bodyFont = Gowun_Dodum({
   variable: "--font-body",
+  weight: "400",
+  subsets: ["latin"],
+});
+
+// 짧은 단계 제목과 버튼 — 굵고 둥글어 아이가 한눈에 읽기 쉬운 포인트 서체
+const accentFont = Jua({
+  variable: "--font-accent",
   weight: "400",
   subsets: ["latin"],
 });
@@ -32,9 +39,9 @@ export default function RootLayout({
   return (
     <html
       lang="ko"
-      className={`${bodyFont.variable} ${handFont.variable} h-full antialiased`}
+      className={`${bodyFont.variable} ${accentFont.variable} ${handFont.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col font-[family-name:var(--font-body)]">
         {/* 계측 — 키가 없으면 조용히 꺼진다 (렌더 결과 없음) */}
         <Analytics />
         {children}

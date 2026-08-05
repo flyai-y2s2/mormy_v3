@@ -1,3 +1,5 @@
+import { FractionText, StackedFraction } from "./FractionText";
+
 /**
  * 시각적 반증 — n등분한 원에서 shade개 조각을 칠해 보여준다.
  * 교정하는 주체는 모르미가 아니라 이 그림(증거)이다.
@@ -21,19 +23,19 @@ export function FractionPizza({
       <path
         key={i}
         d={`M${c},${c} L${c + r * Math.cos(a0)},${c + r * Math.sin(a0)} A${r},${r} 0 0 1 ${c + r * Math.cos(a1)},${c + r * Math.sin(a1)} Z`}
-        fill={i < shade ? "#f5a524" : "#fdf0d5"}
-        stroke="#b4741a"
+        fill={i < shade ? "#f28f79" : "#fff5df"}
+        stroke="#a85e4d"
         strokeWidth="1.6"
       />,
     );
   }
   return (
-    <div className="flex flex-col items-center gap-0.5" style={{ width: size }}>
-      <svg viewBox="0 0 104 104" width="100%" aria-label={`${shade}/${n}`}>
+    <div className="fraction-pizza flex flex-col items-center gap-0.5" style={{ width: size }}>
+      <svg viewBox="0 0 104 104" width="100%" aria-hidden="true">
         {slices}
       </svg>
-      <span className="text-[13px] font-medium text-[#8a5a12]">
-        {shade}/{n}
+      <span className="rounded-full bg-[#fff0e9] px-2.5 py-1 text-[14px] text-[#915044]">
+        <StackedFraction numerator={shade} denominator={n} />
       </span>
     </div>
   );
@@ -46,10 +48,10 @@ export function FractionCards({ labels }: { labels: string[] }) {
       {labels.map((l, i) => (
         <div
           key={l}
-          className="flex h-14 w-12 items-center justify-center rounded-md border-2 border-[#c9a06a] bg-white text-lg font-medium text-stone-700 shadow-sm"
+          className="flex h-14 w-12 items-center justify-center rounded-lg border-2 border-[#dbc49c] bg-[#fffdf7] text-lg text-[#3d4741] shadow-md"
           style={{ transform: `rotate(${i === 0 ? -4 : 3}deg)` }}
         >
-          {l}
+          <FractionText text={l} />
         </div>
       ))}
     </div>

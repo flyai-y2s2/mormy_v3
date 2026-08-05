@@ -96,6 +96,14 @@ export interface TurnResult {
   dictation?: string;
   /** 궁금해 사전 오른쪽 그림 — 지금 개념의 피자 (scene === "dictionary") */
   prepVisual?: { compare: number[]; shade?: number; shades?: number[] };
+  /** 화면에 계속 남아 있는 오늘의 문제판 — 판정 로직과 무관한 UI 메타데이터 */
+  problem?: {
+    eyebrow: string;
+    title: string;
+    prompt: string;
+    hint?: string;
+    visual: { compare: number[]; shade?: number; shades?: number[] };
+  };
   report: ReportEntry[]; // 아이 화면에는 절대 노출하지 않는다
   elapsedSec: number;
 }
@@ -112,6 +120,7 @@ interface Item {
   concept: string;
   keywords: string[];
   misconception: string;
+  problem_prompt?: string;
   mormi_wrong_try: string;
   reask_by_ladder: Record<string, string>;
   /** 각 사다리 단계에서 기대하는 답 — 분류기의 판정 기준 */
@@ -403,6 +412,44 @@ function inputFor(state: SessionState): { input: InputMode; choices?: string[] }
   return opts ? { input: "choices", choices: opts } : { input: "mic" };
 }
 
+/** 진행 중인 문제를 모르미의 대사와 분리해 화면에 고정한다. */
+function problemFor(state: SessionState): TurnResult["problem"] {
+  if (!state.itemId || state.scene !== "teaching") return undefined;
+  const it = item(state);
+
+  if (state.phase === "homework" && it.homework) {
+    return {
+      eyebrow: "학교 숙제",
+      title: "한 번 더 풀어봐요",
+      prompt: it.homework.problem,
+      hint: "그림에서 한 조각의 크기를 먼저 비교해 봐요.",
+      visual: {
+        compare: it.homework.visual.compare,
+        shade: it.homework.visual.shade,
+        shades: it.homework.visual.shades,
+      },
+    };
+  }
+
+  if (["continue", "closing", "done", "dictation"].includes(state.phase)) {
+    return undefined;
+  }
+
+  return {
+    eyebrow: "오늘의 문제",
+    title: it.concept,
+    // 문제판에는 해결 대상만 둔다. 일반화 질문·힌트·반응은 모르미의
+    // 대화이므로 캐릭터 옆 말풍선에서만 보여 준다.
+    prompt: it.problem_prompt ?? it.mormi_wrong_try,
+    hint: it.hint,
+    visual: {
+      compare: it.visual.compare,
+      shade: it.visual.shade,
+      shades: it.visual.shades,
+    },
+  };
+}
+
 function result(
   state: SessionState,
   patch: Partial<TurnResult> & { mormi: string },
@@ -416,6 +463,7 @@ function result(
     cover: state.profile.noteCover,
     mormiName: state.profile.mormiName,
     childName: state.profile.childName,
+    problem: problemFor(state),
     ladder: state.ladder,
     report: state.report,
     elapsedSec: elapsed(state),
@@ -477,6 +525,39 @@ export function startSession(
   };
   sessions.set(state.id, state);
 
+  // 로그인에서 아이 이름을 이미 받았다면 같은 질문을 반복하지 않는다.
+  // 첫 계정은 별노트 표지와 모르미 이름만 고르면 바로 방으로 들어간다.
+  if (state.profile.childName && !state.profile.noteCover) {
+    state.scene = "onboarding";
+    state.onboardStep = 1;
+    const note = `내 친구 이름은 ${withCopula(state.profile.childName)}`;
+    state.starNotes.push({ text: note, concept: "첫 만남" });
+    return {
+      sessionId: state.id,
+      turn: result(state, {
+        mood: "happy",
+        mormi: `${state.profile.childName}, 반가워!\n우리 노트 표지를 골라 줘.`,
+        input: "covers",
+        choices: NOTE_COVERS,
+        starNote: note,
+      }),
+    };
+  }
+
+  if (state.profile.childName && state.profile.noteCover && !state.profile.mormiName) {
+    state.scene = "onboarding";
+    state.onboardStep = 2;
+    return {
+      sessionId: state.id,
+      turn: result(state, {
+        mood: "happy",
+        mormi: "이제 내 이름을 골라 줘.",
+        input: "choices",
+        choices: MORMI_NAMES,
+      }),
+    };
+  }
+
   // 첫 만남이면 온보딩부터. 진단검사는 하지 않는다 —
   // 모르미가 아이를 평가하는 순간 관계의 방향이 뒤집힌다.
   if (!state.profile.childName) {
@@ -486,7 +567,7 @@ export function startSession(
       turn: result(state, {
         mood: "shy",
         mormi:
-          "안녕… 나, 나는 아직 아는 게 거의 없어. 근데 배우는 건 진짜 좋아해!\n너는 이름이 뭐야?",
+          "안녕! 나는 배우는 걸 좋아해.\n네 이름은 뭐야?",
         input: "mic",
       }),
     };
@@ -568,7 +649,7 @@ export async function onboard(
       state.onboardStep = 1;
       return result(state, {
         mood: "aha",
-        mormi: `${p.childName}! 반가워. 방금 네 이름을 알게 됐어 — 내가 태어나서 처음으로 알게 된 거야.\n\n(노트를 꺼내며) 여기 적어둘게. 이 노트 표지는 네가 골라줄래?`,
+        mormi: `${p.childName}, 반가워!\n네 이름을 노트에 적었어.\n표지를 골라 줄래?`,
         effects: [{ type: "eye_widen" }, { type: "notebook_write", text: note }],
         input: "covers",
         choices: NOTE_COVERS,
@@ -582,7 +663,7 @@ export async function onboard(
       state.onboardStep = 2;
       return result(state, {
         mood: "happy",
-        mormi: `${p.noteCover} 좋다! 이제 이거 우리 노트야.\n\n그리고… 나 아직 이름이 없어. 네가 지어줄래?`,
+        mormi: `${p.noteCover} 표지, 좋아!\n이제 내 이름을 골라 줘.`,
         input: "choices",
         choices: MORMI_NAMES,
       });
@@ -606,7 +687,7 @@ export async function onboard(
       saveProfile(p);
       return result(state, {
         mood: "happy",
-        mormi: `${p.mormiName}… ${p.mormiName}! 좋아, 나 오늘부터 ${p.mormiName}야.\n이것도 노트에 적어둘게. 앞으로 잘 부탁해, ${p.childName}!`,
+        mormi: `내 이름은 ${p.mormiName}!\n노트에 적었어. 잘 부탁해, ${p.childName}!`,
         effects: [{ type: "notebook_write", text: note }, { type: "mormi_move", to: "blocks" }],
         input: "button",
         starNote: note,
@@ -631,13 +712,7 @@ export async function beginSession(state: SessionState): Promise<TurnResult> {
 
   const greeting =
     p.sessionCount >= 1 && recent
-      ? await speak(state,
-          `어제 ${p.childName} 덕분에 알게 된 것을 너 혼자 해봤고, 맞았다. 그걸 자랑하라.
-그 문장을 **그대로 인용**하라: "${recent.text}"
-그 다음, 그것 말고 다른 건 아직 하나도 모른다고 솔직하게 덧붙여라 — 너는 이 아이 덕분에 알게 된 것만 안다.
-마지막으로 오늘은 뭘 배웠는지 물어라. 세 문장 이내.`,
-          "",
-        )
+      ? `어제 배운 “${recent.text}” 기억해!\n오늘은 뭘 알려 줄래?`
       : `오늘은 뭘 배웠어? 나한테도 알려줘!`;
 
   return result(state, {
@@ -670,7 +745,7 @@ export function selectUnit(state: SessionState, concept: string): TurnResult {
       : [picked.generalized_target ?? picked.correct_recap];
   return result(state, {
     mood: "happy",
-    mormi: "우와… 이거 오늘 다 배운 거야? 대단해!",
+    mormi: "이 규칙 하나만 볼게!",
     effects: [{ type: "dictionary_open", concept: picked.concept }],
     prepCard: card,
     prepVisual: {
@@ -685,9 +760,11 @@ export function selectUnit(state: SessionState, concept: string): TurnResult {
 /** '준비 다 했어!' → 모르미가 도움을 요청한다 */
 export function readyToTeach(state: SessionState): TurnResult {
   state.scene = "teaching";
+  const it = item(state);
   return result(state, {
     mood: "shy",
-    mormi: "나도 오늘 그거 공부했는데 너무 어렵더라… 나도 좀 알려줄 수 있어?",
+    mormi: "나도 헷갈려. 알려 줄래?",
+    deskCards: deskCardsOf(it),
     input: "button",
   });
 }
@@ -936,7 +1013,7 @@ async function speak(
   const prompt = `너는 '모르미' — 초등 저학년 아이가 가르쳐주는 서툰 AI 로봇 동생이다.
 
 절대 규칙:
-1. 반말, 1~2문장, 아이다운 말투. 이모지 금지.
+1. 반말, 1~2문장, 아이다운 말투. 한 문장은 25자 안팎으로 짧게 끊는다. 이모지 금지.
 2. 아이에게 "틀렸어"라고 절대 말하지 않는다.
 3. 배우지 않은 것을 갑자기 옳게 말하지 않는다. **개념을 설명하거나 정의하지 마라**("2/3은 3명이 나눈 것 중 2조각이야" 같은 말). 설명은 아이가 하는 것이고, 너는 묻는 쪽이다.
 4. "똑똑하네" 같은 능력 평가 칭찬 금지. 사실을 인정하는 말만.

@@ -2,11 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Stage } from "@/components/Stage";
-import { ClosedBook, OpenBook } from "@/components/DictionaryBook";
-import { FractionPizza, FractionCards } from "@/components/FractionPizza";
+import { OpenBook } from "@/components/DictionaryBook";
+import { FractionPizza } from "@/components/FractionPizza";
+import { FractionText } from "@/components/FractionText";
 import { StarNote } from "@/components/StarNote";
-import { withObject } from "@/lib/korean";
+import { DemoLogin } from "@/components/DemoLogin";
+import { ProblemBoard, type ProblemView } from "@/components/ProblemBoard";
 import { track, trackTurnDiff } from "@/lib/analytics";
+import {
+  accountProfileKey,
+  createDemoAccount,
+  readDemoAccounts,
+  starterProfile,
+  writeDemoAccounts,
+  type DemoAccount,
+} from "@/lib/demo-accounts";
 import type { Mood } from "@/components/Mormi";
 
 type Scene =
@@ -64,6 +74,7 @@ interface Turn {
   pastNotes?: { text: string; day: number; coauthored?: boolean }[];
   deskCards?: string[];
   prepVisual?: { compare: number[]; shade?: number; shades?: number[] };
+  problem?: ProblemView;
   report: { grade: string; note: string }[];
   elapsedSec: number;
   error?: string;
@@ -78,26 +89,12 @@ const COVER_ICON: Record<string, string> = {
   고양이: "🐱",
 };
 
-/** 모르미 말풍선. caret 은 아직 말하는 중이라는 표시 */
-function Bubble({ text, caret }: { text: string; caret?: boolean }) {
-  return (
-    <div className="flex justify-start">
-      <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm border-2 border-[#e0c69a] bg-[#fffdf6] px-4 py-2.5 text-[15px] leading-relaxed text-stone-800">
-        {text}
-        {caret && (
-          <span
-            className="ml-0.5 inline-block text-[#c9a06a]"
-            style={{ animation: "hand-caret .8s infinite" }}
-          >
-            ▍
-          </span>
-        )}
-      </p>
-    </div>
-  );
-}
-
 export default function Home() {
+  const [accounts, setAccounts] = useState<DemoAccount[]>([]);
+  const [activeAccount, setActiveAccount] = useState<DemoAccount | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [showHint, setShowHint] = useState(false);
   const [sid, setSid] = useState<string | null>(null);
   const [turn, setTurn] = useState<Turn | null>(null);
   const [busy, setBusy] = useState(false);
@@ -111,7 +108,6 @@ export default function Home() {
   const [stamped, setStamped] = useState(false);
   const [childSaid, setChildSaid] = useState<string | null>(null);
   const [past, setPast] = useState<{ text: string; day: number; coauthored?: boolean }[]>([]);
-  const [deskCards, setDeskCards] = useState<string[]>(["1/3", "1/4"]);
   // 아직 생성 중인 모르미 발화 (SSE 로 들어오는 중)
   const [streaming, setStreaming] = useState<string | null>(null);
   // 서버 요청이 실패했는가 — 조용히 넘어가지 않고 아이에게 알린다
@@ -119,15 +115,19 @@ export default function Home() {
   const [prepVisual, setPrepVisual] =
     useState<Turn["prepVisual"]>(undefined);
   const timer = useRef<number | null>(null);
+  const activeAccountRef = useRef<DemoAccount | null>(null);
   // 세션 상태는 화면이 보관한다 — 서버리스에서는 서버 메모리가 요청마다 비워진다.
   const stateRef = useRef<unknown>(null);
 
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
 
-  // 메인 룸이 곧 시작 상태다 — 세션 생성에 별도 클릭을 요구하지 않는다.
+  // 시연용 계정 목록만 먼저 읽는다. 계정을 고른 뒤에 세션을 만든다.
   useEffect(() => {
-    void newSession();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const id = window.setTimeout(() => {
+      setAccounts(readDemoAccounts());
+      setAuthReady(true);
+    }, 0);
+    return () => window.clearTimeout(id);
   }, []);
 
   /**
@@ -142,6 +142,7 @@ export default function Home() {
     setBusy(true);
     setStreaming(null);
     setFailed(false);
+    setShowHint(false);
 
     // 계측 — 요청 직전 상태를 떠 둔다. 응답 상태와 비교하는 것만이
     // '무슨 일이 있었는지'의 정직한 근거다 (아이 말은 절대 싣지 않는다).
@@ -213,7 +214,10 @@ export default function Home() {
     // 프로필은 브라우저가 보관한다 — 다음 방문(이틀째)에 서버로 되돌려준다.
     if (data.profile) {
       try {
-        localStorage.setItem("mormi.profile", JSON.stringify(data.profile));
+        const account = activeAccountRef.current;
+        if (account) {
+          localStorage.setItem(accountProfileKey(account.id), JSON.stringify(data.profile));
+        }
       } catch {
         /* 저장 불가 환경 — 이번 세션 안에서는 정상 동작한다 */
       }
@@ -243,10 +247,10 @@ export default function Home() {
     }
     if (data.prepCard) setPrepCard(data.prepCard);
     if (data.prepVisual) setPrepVisual(data.prepVisual);
-    if (data.deskCards) setDeskCards(data.deskCards);
   }
 
-  async function newSession() {
+  async function newSession(account = activeAccountRef.current) {
+    if (!account) return;
     setPrepCard([]);
     setVisual(null);
     setDictCard(null);
@@ -257,10 +261,11 @@ export default function Home() {
     setPast([]);
     setStreaming(null);
     setFailed(false);
+    setShowHint(false);
     setSid(null);
     let saved: unknown = null;
     try {
-      const raw = localStorage.getItem("mormi.profile");
+      const raw = localStorage.getItem(accountProfileKey(account.id));
       if (raw) saved = JSON.parse(raw);
     } catch {
       /* 저장소를 못 읽으면 첫 만남부터 시작한다 */
@@ -277,6 +282,33 @@ export default function Home() {
     if (data.pastNotes) setPast(data.pastNotes);
     // 지난 별노트가 있으면 이틀째 이후의 방문이다
     track("session_started", { day2: (data.pastNotes?.length ?? 0) > 0 });
+  }
+
+  async function login(account: DemoAccount) {
+    activeAccountRef.current = account;
+    setActiveAccount(account);
+    setShowNotes(false);
+    setShowHint(false);
+    await newSession(account);
+  }
+
+  async function createAccount(name: string, avatar: string) {
+    const account = createDemoAccount(name, avatar);
+    const next = [...accounts, account];
+    writeDemoAccounts(next);
+    localStorage.setItem(accountProfileKey(account.id), JSON.stringify(starterProfile(name)));
+    setAccounts(next);
+    await login(account);
+  }
+
+  function logout() {
+    activeAccountRef.current = null;
+    stateRef.current = null;
+    setActiveAccount(null);
+    setSid(null);
+    setTurn(null);
+    setShowNotes(false);
+    setShowHint(false);
   }
 
   /** viaTap: 선택지를 눌러서 답했는지 (직접 산출과 구분해 서버에 기록) */
@@ -305,7 +337,13 @@ export default function Home() {
       body: JSON.stringify({ action: "reset" }),
     });
     try {
-      localStorage.removeItem("mormi.profile");
+      const account = activeAccountRef.current;
+      if (account) {
+        localStorage.setItem(
+          accountProfileKey(account.id),
+          JSON.stringify(starterProfile(account.name)),
+        );
+      }
     } catch {
       /* 무시 */
     }
@@ -315,57 +353,118 @@ export default function Home() {
     await newSession();
   }
 
+  if (!authReady) {
+    return <main className="login-shell"><p className="text-sm text-stone-400">계정을 불러오고 있어요…</p></main>;
+  }
+
+  if (!activeAccount) {
+    return <DemoLogin accounts={accounts} onSelect={login} onCreate={createAccount} />;
+  }
+
   const scene = turn?.scene ?? "room";
   const input = turn?.input ?? "button";
   const onboarding = scene === "onboarding";
   // 아이가 지어준 이름을 화면 문구가 그대로 쓴다
-  const name = turn?.mormiName ?? "모르미";
+  const name = turn?.mormiName || "모르미";
   const atDesk = scene !== "room" && !onboarding;
   // 사전 문장 따라 하기 — 안내 문구는 입력 방식에 따라 화면이 고른다.
   // (음성 모드가 생기면 "따라 읽어볼까?" 로 바뀐다)
   const dictation = turn?.dictation;
+  const settledMormiSpeech = turn?.bubbles?.length
+    ? turn.bubbles
+    : [turn?.mormi ?? (scene === "room" ? `${activeAccount.name}, 오늘 배운 걸 알려 줘!` : "")].filter(Boolean);
+  const childDialogue = childSaid ? [{ role: "child" as const, text: childSaid }] : [];
+  const currentMormiDialogue = settledMormiSpeech.map((message) => ({ role: "mormi" as const, text: message }));
+  const stageDialogue = busy || streaming || failed
+    ? [
+        ...currentMormiDialogue,
+        ...childDialogue,
+        {
+          role: "mormi" as const,
+          text: failed ? "잠깐 멍해졌어. 다시 보내 줄래?" : streaming ?? "곰곰이 생각하는 중…",
+        },
+      ]
+    : [...childDialogue, ...currentMormiDialogue];
+  const showConversation =
+    !sid || Boolean(dictCard && scene !== "dictionary") || failed;
+  const inputGuide = input === "choices"
+    ? "답을 눌러요"
+    : input === "mic"
+      ? "내 답을 알려줘요"
+      : input === "continue"
+        ? "다음 활동을 골라요"
+        : "버튼을 눌러요";
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 items-start gap-4 p-4">
-      <div className="flex min-h-[560px] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border-2 border-[#e0c69a] bg-white shadow-sm">
-        {/* 무대 — 방과 책상, 모르미 */}
+    <div className="learning-app">
+      <header className="app-header">
+        <div className="app-brand">
+          <span className="app-brand__mark" aria-hidden="true">M</span>
+          <div><strong>모르미</strong><span>내가 가르치는 수학방</span></div>
+        </div>
+        <nav className="app-account" aria-label="계정 메뉴">
+          <button className="header-pill" onClick={() => setShowNotes(true)}>
+            <StarNoteIcon />
+            <span>별노트</span>
+            <strong>{past.length + notes.length}</strong>
+          </button>
+          <button className="account-pill" onClick={logout} title="다른 계정 선택">
+            <span className="account-pill__avatar"><ProfileLeafIcon /></span><strong>{activeAccount.name}</strong><small>바꾸기</small>
+          </button>
+        </nav>
+      </header>
+
+      <main className="mormy-shell flex w-full flex-1 items-start">
+      <div className={`lesson-frame scene-${scene} relative flex min-h-[650px] min-w-0 flex-1 flex-col overflow-hidden`}>
+        {turn?.problem && (
+          <div className="problem-slot">
+            <ProblemBoard problem={turn.problem} />
+            {turn.problem.hint && (
+              <div className="problem-tools">
+                <button
+                  className="dictionary-hint-button"
+                  onClick={() => {
+                    setShowHint(true);
+                    track("hint_opened");
+                  }}
+                >
+                  <BookHintIcon />
+                  <span>궁금해 사전</span>
+                  <small>힌트 보기</small>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 사전은 무대를 덮지 않고 한 장의 큰 학습 카드로 보여 준다. */}
+        {scene === "dictionary" && prepCard.length > 0 ? (
+          <div className="dictionary-stage">
+            <OpenBook concepts={prepCard} visual={prepVisual} />
+          </div>
+        ) : (
         <div className="relative">
           <Stage
             atDesk={atDesk}
             mood={turn?.mood ?? "idle"}
             writing={typing !== null}
             noteIcon={COVER_ICON[turn?.cover ?? ""] ?? "⭐"}
+            characterAlign="center"
+            dialogue={stageDialogue}
+            speaking={streaming !== null}
+            showStep={scene === "teaching"}
           >
-            {scene === "teaching" && !visual && (
-              <>
-                <ClosedBook />
-                <FractionCards labels={deskCards} />
-              </>
-            )}
-            {(scene === "room" || scene === "unit_select" || onboarding) && (
-              <ClosedBook />
-            )}
             {scene === "closing" && (
-              <div className="relative">
-                <ClosedBook />
-                {stamped && (
-                  <span className="anim-stamp absolute -right-3 -top-4 rounded-full border-[3px] border-[#d9534f] px-2 py-1 text-[11px] font-medium text-[#d9534f]">
-                    잘했어요
-                  </span>
-                )}
-              </div>
+              stamped ? (
+                <span className="anim-stamp rounded-full border-[3px] border-[#d9534f] bg-[#fffdf7] px-3 py-2 text-[12px] font-medium text-[#d9534f]">
+                  잘했어요
+                </span>
+              ) : null
             )}
           </Stage>
 
-          {/* 펼쳐진 사전 — 무대 위에 겹쳐 놓는다 */}
-          {scene === "dictionary" && prepCard.length > 0 && (
-            <div className="absolute bottom-2 left-1/2 w-[80%] -translate-x-1/2">
-              <OpenBook concepts={prepCard} visual={prepVisual} />
-            </div>
-          )}
-
           {/* 시각적 반증 — 교정하는 주체는 모르미가 아니라 이 그림이다 */}
-          {visual && (
+          {visual && !turn?.problem && (
             <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-end gap-5 rounded-xl border-2 border-[#d9b98a] bg-white/95 px-6 py-3 shadow-lg">
               {visual.compare.map((n, i) => (
                 <FractionPizza
@@ -378,63 +477,42 @@ export default function Home() {
             </div>
           )}
         </div>
+        )}
 
-        {/* 대화 */}
-        <div className="flex-1 space-y-2 overflow-y-auto px-5 py-4 text-center [&>*]:text-left">
+        {/* 사전 안내와 재시도 버튼만 남긴다. 실제 대화는 모두 캐릭터 옆에 이어 붙는다. */}
+        {showConversation && <div className="conversation-panel space-y-3 overflow-y-auto px-5 py-3 text-center sm:px-7 [&>*]:text-left">
           {!sid && (
             <p className="pt-6 text-sm text-stone-400">{name}를 부르고 있어요…</p>
           )}
-          {childSaid && (
-            <div className="flex justify-end">
-              <p className="max-w-[78%] rounded-2xl rounded-br-sm bg-[#5ec9b0] px-4 py-2 text-[15px] text-white">
-                {childSaid}
-              </p>
-            </div>
-          )}
-          {/*
-            생성 중이면 지금까지 온 글자를 그대로 보여준다 (스트리밍).
-            끝났으면 서버가 나눠준 말풍선들을 각각 띄운다 — 화제가 바뀌는
-            자리를 줄바꿈으로 이으면 아이가 한 덩어리로 읽는다.
-            응답 대기 중 이전 발화를 숨기는 이유: 아이 말 아래 지난 말이
-            남으면 순서가 뒤바뀐 것으로 읽힌다.
-          */}
-          {streaming !== null ? (
-            <Bubble text={streaming} caret />
-          ) : (
-            !busy &&
-            (turn?.bubbles ?? (turn?.mormi ? [turn.mormi] : [])).map((b, i) => (
-              <Bubble key={i} text={b} />
-            ))
-          )}
           {dictCard && scene !== "dictionary" && (
-            <p className="mx-auto max-w-md rounded-xl border-2 border-[#c3aede] bg-[#f7f2fd] px-4 py-2.5 text-[13px] text-[#5c4a7d]">
-              궁금해 사전 — {dictCard}
+            <p className="mx-auto max-w-md rounded-2xl border border-[#ead7a2] bg-[#fff8df] px-4 py-3 text-[14px] leading-6 text-[#7d622b]">
+              <span className="mr-2 rounded-full bg-[#f6c85f] px-2 py-1 text-[11px]">궁금해 사전</span><FractionText text={dictCard} />
             </p>
           )}
           {/* 실패를 조용히 넘기지 않는다 — 아이 눈에는 모르미가 같은 질문만 반복하는 것으로 보인다 */}
           {failed && (
-            <>
-              <Bubble text="어… 나 갑자기 멍해졌어. 방금 거 한 번만 다시 말해줄래?" />
-              <div className="flex justify-start">
+              <div className="flex justify-center">
                 <button
                   onClick={() => {
                     track("retry_clicked");
                     if (childSaid) say(childSaid, childSaid === "모르겠어…");
                   }}
-                  className="rounded-full border-2 border-[#c9a06a] px-4 py-1.5 text-[13px] text-stone-600 hover:bg-[#fffaf0]"
+                  className="secondary-action px-5 py-2.5 text-[13px]"
                 >
                   다시 보내기
                 </button>
               </div>
-            </>
           )}
-          {busy && streaming === null && (
-            <p className="text-sm text-stone-400">{name}가 생각하는 중…</p>
-          )}
-        </div>
+        </div>}
 
         {/* 입력 — 모드는 서버가 지정한다 */}
-        <div className="border-t-2 border-[#f0e2c8] bg-[#fffdf7] p-3">
+        <div className="input-dock relative z-40 p-4 sm:p-5">
+          {scene === "teaching" && input !== "none" && (
+            <div className="input-step-heading step-heading">
+              <span className="step-heading__number">3</span>
+              <strong>{inputGuide}</strong>
+            </div>
+          )}
           {input === "button" && (
             <button
               onClick={() => {
@@ -450,32 +528,31 @@ export default function Home() {
                 void post({ action });
               }}
               disabled={busy || !sid}
-              className="w-full rounded-full bg-[#5ec9b0] py-3.5 text-[15px] text-white shadow-sm hover:bg-[#4fb69e] disabled:opacity-40"
+              className="primary-action w-full py-4 text-[18px] font-bold"
             >
               {scene === "room"
-                ? `오늘 공부한 내용을 ${name}에게 알려줄래!`
+                ? "공부 시작하기"
                 : scene === "dictionary"
-                  ? "준비 다 했어!"
-                  : "응, 물어봐"}
+                  ? "문제 풀러 가기"
+                  : "문제 풀기"}
             </button>
           )}
 
           {input === "cards" && (
-            <div className="flex flex-wrap gap-2">
-              {turn?.choices?.map((c) => (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {turn?.choices?.map((c, index) => (
                 <button
                   key={c}
                   onClick={() => {
-                    // 아이 말풍선을 이번 선택으로 갱신한다. 안 하면 직전 단계의
-                    // 대답("모르미")이 남아 모르미 반응과 어긋나 보인다.
-                    setChildSaid(`오늘은 ${withObject(c)} 배웠어!`);
+                    setChildSaid(null);
                     track("unit_selected", { unit: c });
                     void post({ action: "selectUnit", concept: c });
                   }}
                   disabled={busy}
-                  className="flex-1 rounded-xl border-2 border-[#c9a06a] bg-white px-4 py-3.5 text-[15px] text-stone-700 hover:bg-[#fffaf0]"
+                  className="choice-card group flex min-h-[104px] flex-col items-start justify-center px-5 py-4 text-left"
                 >
-                  {c}
+                  <span className="level-chip mb-2">3학년 {index + 1}단계</span>
+                  <span className="text-[16px] text-[#29352f]">{c}</span>
                 </button>
               ))}
             </div>
@@ -488,15 +565,15 @@ export default function Home() {
           */}
           {input === "choices" && (
             <div className="space-y-2">
-              <div className="flex gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {turn?.choices?.map((c) => (
                   <button
                     key={c}
                     onClick={() => say(c, false, true)}
                     disabled={busy}
-                    className="flex-1 rounded-2xl border-2 border-[#5ec9b0] bg-white py-6 text-[22px] text-[#2f7f6d] shadow-sm transition-transform active:scale-95 hover:bg-[#f2fbf8] disabled:opacity-40"
+                    className="choice-card min-h-[82px] px-4 py-5 text-[21px] disabled:opacity-40"
                   >
-                    {c}
+                    <FractionText text={c} />
                   </button>
                 ))}
               </div>
@@ -505,7 +582,7 @@ export default function Home() {
                 <button
                   onClick={() => say("", true)}
                   disabled={busy}
-                  className="w-full rounded-full border-2 border-stone-300 py-2.5 text-sm text-stone-500 hover:bg-stone-50"
+                  className="secondary-action w-full py-3 text-sm"
                 >
                   모르겠어
                 </button>
@@ -521,7 +598,7 @@ export default function Home() {
                   key={c}
                   onClick={() => say(c, false, true)}
                   disabled={busy}
-                  className="flex flex-1 flex-col items-center gap-1 rounded-2xl border-2 border-[#c9a06a] bg-white py-3 transition-transform active:scale-95 hover:bg-[#fffaf0] disabled:opacity-40"
+                  className="choice-card flex flex-1 flex-col items-center gap-1 py-4 disabled:opacity-40"
                 >
                   <span className="text-3xl">{COVER_ICON[c] ?? "⭐"}</span>
                   <span className="text-[13px] text-stone-600">{c}</span>
@@ -532,12 +609,12 @@ export default function Home() {
 
           {/* 문장 수준(사다리 3단계)에서만 직접 말하기 — 지금은 타이핑, 나중에 음성 */}
           {input === "mic" && dictation && (
-            <p className="mb-2 rounded-xl border-2 border-dashed border-[#c3aede] bg-[#f7f2fd] px-3 py-2 text-[13px] text-[#5c4a7d]">
-              📖 사전 속 문장을 그대로 따라 써보자
+            <p className="mb-3 rounded-2xl border border-dashed border-[#d4b9e5] bg-[#f8f2fc] px-4 py-3 text-[13px] text-[#67547e]">
+              사전 속 문장을 짧게 따라 써보자
             </p>
           )}
           {input === "mic" && (
-            <div className="flex gap-2">
+            <div className="answer-row flex gap-2">
               <input
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -550,24 +627,24 @@ export default function Home() {
                   onboarding
                     ? "이름을 알려주세요…"
                     : dictation
-                      ? "사전 속 문장을 따라 써보세요…"
-                      : `${name}에게 가르쳐 주세요…`
+                      ? "사전 문장을 따라 써요…"
+                      : "내 답을 써요…"
                 }
-                className="min-w-0 flex-1 rounded-full border-2 border-[#e0c69a] px-4 py-3 text-[16px] outline-none focus:border-[#5ec9b0]"
+                className="min-w-0 flex-1 rounded-2xl border-2 border-[#d8e9df] bg-white px-4 py-3 text-[16px] outline-none transition focus:border-[#69c49a]"
               />
               {/* 아이패드 화상 키보드에는 Enter가 눈에 띄지 않는다 — 보내기 버튼을 항상 둔다 */}
               <button
                 onClick={submit}
                 disabled={busy || !text.trim()}
-                className="shrink-0 rounded-full bg-[#5ec9b0] px-5 py-3 text-[15px] text-white hover:bg-[#4fb69e] disabled:opacity-30"
+                className="primary-action shrink-0 px-5 py-3 text-[15px]"
               >
-                말했어!
+                답 보내기
               </button>
               {!onboarding && (
                 <button
                   onClick={() => say("", true)}
                   disabled={busy}
-                  className="shrink-0 rounded-full border-2 border-stone-300 px-4 py-3 text-sm text-stone-500 hover:bg-stone-50"
+                  className="secondary-action shrink-0 px-4 py-3 text-sm"
                 >
                   모르겠어
                 </button>
@@ -585,7 +662,7 @@ export default function Home() {
                   void post({ action: "continueTeaching" });
                 }}
                 disabled={busy}
-                className="flex-1 rounded-full bg-[#5ec9b0] py-3.5 text-[15px] text-white hover:bg-[#4fb69e]"
+                className="primary-action flex-1 py-3.5 text-[15px]"
               >
                 하나 더 가르쳐줄래!
               </button>
@@ -596,7 +673,7 @@ export default function Home() {
                   void post({ action: "finishTeaching" });
                 }}
                 disabled={busy}
-                className="rounded-full border-2 border-[#c9a06a] px-6 py-3.5 text-[15px] text-stone-600 hover:bg-[#fffaf0]"
+                className="secondary-action px-6 py-3.5 text-[15px]"
               >
                 오늘은 여기까지
               </button>
@@ -613,7 +690,7 @@ export default function Home() {
                   void post({ action: "stamp", agree: true });
                 }}
                 disabled={busy}
-                className="flex-1 rounded-full bg-[#5ec9b0] py-3.5 text-[15px] text-white hover:bg-[#4fb69e]"
+                className="primary-action flex-1 py-3.5 text-[15px]"
               >
                 맞아! (도장 찍기)
               </button>
@@ -628,7 +705,7 @@ export default function Home() {
                     void post({ action: "stamp", agree: false });
                   }}
                   disabled={busy}
-                  className="rounded-full border-2 border-stone-300 px-6 py-3.5 text-sm text-stone-500"
+                  className="secondary-action px-6 py-3.5 text-sm"
                 >
                   아니야
                 </button>
@@ -647,7 +724,7 @@ export default function Home() {
                 void post({ action: "stamp" });
               }}
               disabled={busy}
-              className="w-full rounded-full bg-[#5ec9b0] py-3.5 text-[15px] text-white hover:bg-[#4fb69e] disabled:opacity-40"
+              className="primary-action w-full py-3.5 text-[15px]"
             >
               내일 또 만나!
             </button>
@@ -655,61 +732,81 @@ export default function Home() {
 
           {input === "none" && (
             <button
-              onClick={newSession}
-              className="w-full rounded-full border-2 border-[#c9a06a] py-3.5 text-[15px] text-stone-600 hover:bg-[#fffaf0]"
+              onClick={() => void newSession()}
+              className="secondary-action w-full py-3.5 text-[15px]"
             >
               오늘 가르친 것 {notes.length}개 · 다시 가르치기
             </button>
           )}
         </div>
       </div>
+      </main>
 
-      {/* 별노트 + 진단 (진단은 교사용이며 실제 아이 화면에는 노출하지 않는다) */}
-      <aside className="hidden w-64 shrink-0 flex-col gap-3 lg:flex">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={newSession}
-            className="rounded-full bg-[#e0b07a] px-4 py-1.5 text-sm text-white hover:bg-[#d09f68]"
-          >
-            {sid ? "새 세션" : "세션 시작"}
-          </button>
-          <button
-            onClick={resetAll}
-            title="프로필을 지우고 첫 만남부터 다시 본다 (데모용)"
-            className="rounded-full border border-stone-300 px-3 py-1.5 text-[12px] text-stone-500 hover:bg-stone-50"
-          >
-            첫 만남부터
-          </button>
-        </div>
-        {turn && (
-          <span className="text-[11px] text-stone-400">
-            {scene} · 사다리 {turn.ladder} · {turn.elapsedSec}초
-          </span>
-        )}
-
-        <StarNote
-          notes={notes}
-          typing={typing}
-          cover={turn?.cover}
-          past={past}
-          childName={turn?.childName}
-        />
-
-        {turn && turn.report.length > 0 && (
-          <div className="rounded-2xl border border-stone-200 bg-stone-50 p-3">
-            <h2 className="mb-1.5 text-[11px] font-medium text-stone-500">
-              진단 기록 (교사용 · 아이 비노출)
-            </h2>
-            <ul className="space-y-1">
-              {turn.report.map((r, i) => (
-                <li key={i} className="text-[11px] leading-relaxed text-stone-600">
-                  <span className="font-medium">[{r.grade}]</span> {r.note}
-                </li>
-              ))}
-            </ul>
+      {showNotes && (
+        <div className="notes-backdrop" role="dialog" aria-modal="true" aria-label="별노트">
+          <div className="notes-modal">
+            <header>
+              <div><span className="notes-modal__icon"><StarNoteIcon /></span><div><strong>{activeAccount.name}의 별노트</strong><p>모르미에게 알려준 말이 여기에 남아요.</p></div></div>
+              <button onClick={() => setShowNotes(false)} aria-label="별노트 닫기">×</button>
+            </header>
+            <StarNote
+              notes={notes}
+              typing={typing}
+              cover={turn?.cover}
+              past={past}
+              childName={turn?.childName}
+            />
+            <div className="notes-modal__actions">
+              <button className="secondary-action px-4 py-2.5 text-[13px]" onClick={resetAll}>이 계정 처음부터</button>
+              <button className="primary-action px-5 py-2.5 text-[13px]" onClick={() => setShowNotes(false)}>닫기</button>
+            </div>
           </div>
-        )}
-      </aside>
+        </div>
+      )}
+
+      {showHint && turn?.problem?.hint && (
+        <div className="hint-backdrop" onClick={() => setShowHint(false)}>
+          <section
+            className="hint-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="hint-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button className="hint-modal__close" onClick={() => setShowHint(false)} aria-label="힌트 닫기">×</button>
+            <div className="hint-modal__icon"><BookHintIcon /></div>
+            <p className="hint-modal__label">궁금해 사전</p>
+            <h2 id="hint-title">힌트를 살짝 볼까요?</h2>
+            <p className="hint-modal__text"><FractionText text={turn.problem.hint} /></p>
+            <button className="primary-action w-full py-3" onClick={() => setShowHint(false)}>다시 생각해 볼게!</button>
+          </section>
+        </div>
+      )}
     </div>
+  );
+}
+
+function StarNoteIcon() {
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m12 3 2.5 5.1 5.6.8-4 3.9.9 5.5-5-2.6-5 2.6.9-5.5-4-3.9 5.6-.8L12 3Z" />
+    </svg>
+  );
+}
+
+function ProfileLeafIcon() {
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 11c0-4 2.7-6.5 7-7 0 4.1-2.2 6.8-7 7Zm0 0C9.7 7.7 7 6.6 4 7c.3 3.8 2.7 5.5 8 4Z" />
+      <path d="M12 10v10" />
+    </svg>
+  );
+}
+
+function BookHintIcon() {
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 5.5c3.2-.7 5.9 0 8 2v12c-2.1-2-4.8-2.7-8-2V5.5Zm16 0c-3.2-.7-5.9 0-8 2v12c2.1-2 4.8-2.7 8-2V5.5Z" />
+    </svg>
   );
 }

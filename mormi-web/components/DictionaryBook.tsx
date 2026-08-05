@@ -1,4 +1,5 @@
 import { FractionPizza } from "./FractionPizza";
+import { FractionText } from "./FractionText";
 
 /** 책상 위에 덮여 있는 궁금해 사전 (room·teaching 씬) */
 export function ClosedBook({ onClick }: { onClick?: () => void }) {
@@ -6,7 +7,7 @@ export function ClosedBook({ onClick }: { onClick?: () => void }) {
     <button
       onClick={onClick}
       disabled={!onClick}
-      className="relative h-14 w-24 -rotate-3 rounded-r-md rounded-l-sm bg-[#8f6fb5] shadow-md disabled:cursor-default"
+      className="relative h-14 w-24 -rotate-3 rounded-r-lg rounded-l-sm bg-[#8062a6] shadow-[0_6px_12px_rgba(52,35,72,.24)] disabled:cursor-default"
       aria-label="궁금해 사전"
     >
       <span className="absolute left-0 top-0 h-full w-2 rounded-l-sm bg-[#7a5aa0]" />
@@ -19,10 +20,7 @@ export function ClosedBook({ onClick }: { onClick?: () => void }) {
   );
 }
 
-/**
- * 펼쳐진 궁금해 사전 — 왼쪽 개념 / 오른쪽 그림 2단.
- * 내용은 교과 데이터에서 추출한 개념 문장만 쓴다. 사전은 지어내지 않는다.
- */
+/** 중앙에 뜨는 궁금해 사전. 한 화면에는 규칙 하나만 보여준다. */
 export function OpenBook({
   concepts,
   visual,
@@ -30,32 +28,37 @@ export function OpenBook({
   concepts: string[];
   visual?: { compare: number[]; shade?: number; shades?: number[] };
 }) {
+  const rule = concepts[0] ?? "규칙을 그림으로 다시 살펴봐요.";
   return (
-    <div className="flex overflow-hidden rounded-lg border-2 border-[#7a5aa0] bg-[#fffdf7] shadow-lg">
-      <div className="w-[58%] space-y-2 border-r-2 border-dashed border-[#d8c6ec] p-4">
-        <p className="text-[11px] font-medium text-[#7a5aa0]">궁금해 사전</p>
-        <ul className="space-y-1.5">
-          {concepts.map((c, i) => (
-            <li key={i} className="text-[13px] leading-relaxed text-stone-700">
-              · {c}
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className="flex flex-1 items-center justify-center gap-3 p-3">
+    <section
+      className="dictionary-popup"
+      role="dialog"
+      aria-labelledby="dictionary-title"
+    >
+      <div className="dictionary-popup__handle" aria-hidden="true" />
+      <p id="dictionary-title" className="dictionary-popup__title">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 5.5c3.2-.7 5.9 0 8 2v12c-2.1-2-4.8-2.7-8-2V5.5Zm16 0c-3.2-.7-5.9 0-8 2v12c2.1-2 4.8-2.7 8-2V5.5Z" />
+        </svg>
+        궁금해 사전
+      </p>
+      <p className="dictionary-popup__rule">
+        <FractionText text={rule} />
+      </p>
+      <div className="dictionary-popup__visual">
         {visual ? (
           visual.compare.map((n, i) => (
             <FractionPizza
               key={n}
               n={n}
               shade={visual.shades?.[i] ?? visual.shade ?? 1}
-              size={74}
+              size={86}
             />
           ))
         ) : (
-          <span className="text-xs text-stone-400">그림</span>
+          <span className="text-sm text-stone-400">그림으로 확인해요</span>
         )}
       </div>
-    </div>
+    </section>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { withSubject, withCompanion } from "@/lib/korean";
+import { FractionText } from "./FractionText";
 
 /**
  * 별노트 — 모르미의 수첩.
@@ -27,8 +28,8 @@ export function StarNote({
   // "네가"보다 이름으로 불러야 노트가 '내 것'으로 남는다.
   // 혼자 알려준 것과 같이 공부한 것은 조사가 다르므로(이가/이랑) Entry 에서 고른다.
   return (
-    <div className="overflow-hidden rounded-2xl border-2 border-[#d9b98a] bg-[#fffdf5]">
-      <h2 className="flex items-center gap-1.5 px-4 pb-2 pt-4 text-sm font-medium text-[#8a6d3f]">
+    <div className="overflow-hidden rounded-[20px] border border-[#ddc9a7] bg-[#fffdf5] shadow-sm">
+      <h2 className="flex items-center gap-1.5 px-4 pb-2 pt-4 text-sm text-[#795d33]">
         <span className="text-base leading-none">{COVER[cover] ?? <Star />}</span>{" "}
         별노트
       </h2>
@@ -89,7 +90,7 @@ function Entry({
         className={`font-hand text-[20px] leading-[26px] ${faded ? "text-[#6a7793]" : "text-[#1e2b4d]"}`}
         style={{ transform: "rotate(-0.4deg)" }}
       >
-        {shown}
+        <FractionText text={shown} />
         {animate && shown.length < text.length && (
           <span style={{ animation: "hand-caret .8s infinite" }}>|</span>
         )}
@@ -107,25 +108,28 @@ function Entry({
 
 /** 손글씨가 한 글자씩 적히는 연출 */
 function useTyped(text: string, animate?: boolean) {
-  const [n, setN] = useState(animate ? 0 : text.length);
+  const [n, setN] = useState(0);
   useEffect(() => {
-    if (!animate) {
-      setN(text.length);
-      return;
-    }
-    setN(0);
-    const id = setInterval(() => {
-      setN((v) => {
-        if (v >= text.length) {
-          clearInterval(id);
-          return v;
-        }
-        return v + 1;
-      });
-    }, 55);
-    return () => clearInterval(id);
+    if (!animate) return;
+    let id: ReturnType<typeof setInterval> | null = null;
+    const reset = setTimeout(() => {
+      setN(0);
+      id = setInterval(() => {
+        setN((v) => {
+          if (v >= text.length) {
+            if (id) clearInterval(id);
+            return v;
+          }
+          return v + 1;
+        });
+      }, 55);
+    }, 0);
+    return () => {
+      clearTimeout(reset);
+      if (id) clearInterval(id);
+    };
   }, [text, animate]);
-  return text.slice(0, n);
+  return animate ? text.slice(0, n) : text;
 }
 
 const COVER: Record<string, string> = {
