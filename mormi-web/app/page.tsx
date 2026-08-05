@@ -82,6 +82,28 @@ interface Turn {
 
 type Visual = Extract<Effect, { type: "visual" }>;
 
+type SpeechRecognitionResultEvent = {
+  results: ArrayLike<{
+    isFinal: boolean;
+    0: { transcript: string };
+  }>;
+};
+
+type SpeechRecognitionInstance = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
 const COVER_ICON: Record<string, string> = {
   별: "⭐",
   로켓: "🚀",
@@ -99,6 +121,8 @@ export default function Home() {
   const [turn, setTurn] = useState<Turn | null>(null);
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState("");
+  const [listening, setListening] = useState(false);
+  const [speechMessage, setSpeechMessage] = useState<string | null>(null);
 
   const [prepCard, setPrepCard] = useState<string[]>([]);
   const [visual, setVisual] = useState<Visual | null>(null);
@@ -116,10 +140,12 @@ export default function Home() {
     useState<Turn["prepVisual"]>(undefined);
   const timer = useRef<number | null>(null);
   const activeAccountRef = useRef<DemoAccount | null>(null);
+  const speechRecognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   // 세션 상태는 화면이 보관한다 — 서버리스에서는 서버 메모리가 요청마다 비워진다.
   const stateRef = useRef<unknown>(null);
 
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
+  useEffect(() => () => speechRecognitionRef.current?.abort(), []);
 
   // 시연용 계정 목록만 먼저 읽는다. 계정을 고른 뒤에 세션을 만든다.
   useEffect(() => {
@@ -329,6 +355,59 @@ export default function Home() {
     setText("");
   }
 
+  function toggleSpeechInput() {
+    if (listening) {
+      speechRecognitionRef.current?.stop();
+      return;
+    }
+
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      setSpeechMessage("이 브라우저에서는 음성 입력을 쓸 수 없어요.");
+      track("voice_input_unavailable");
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognition.lang = "ko-KR";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.onstart = () => {
+      setListening(true);
+      setSpeechMessage("듣고 있어요. 천천히 말해 주세요.");
+      track("voice_input_started");
+    };
+    recognition.onresult = (event) => {
+      let transcript = "";
+      let finalTranscript = "";
+      for (let index = 0; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        transcript += result[0]?.transcript ?? "";
+        if (result.isFinal) finalTranscript += result[0]?.transcript ?? "";
+      }
+      setText(transcript.trim());
+      if (finalTranscript.trim()) {
+        setSpeechMessage("잘 들었어요. 글을 확인하고 보내 주세요.");
+        track("voice_input_completed");
+      }
+    };
+    recognition.onerror = () => {
+      setListening(false);
+      setSpeechMessage("잘 듣지 못했어요. 다시 눌러 말해 주세요.");
+      track("voice_input_failed");
+    };
+    recognition.onend = () => {
+      setListening(false);
+      speechRecognitionRef.current = null;
+    };
+    speechRecognitionRef.current = recognition;
+    recognition.start();
+  }
+
   /** 데모용 — 프로필을 지우고 첫 만남부터 다시 본다 */
   async function resetAll() {
     await fetch("/api/session", {
@@ -415,7 +494,7 @@ export default function Home() {
       </header>
 
       <main className="mormy-shell flex w-full flex-1 items-start">
-      <div className={`lesson-frame scene-${scene} relative flex min-h-[650px] min-w-0 flex-1 flex-col overflow-hidden`}>
+      <div className={`lesson-frame scene-${scene} relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden`}>
         {turn?.problem && (
           <div className="problem-slot">
             <ProblemBoard
@@ -428,6 +507,8 @@ export default function Home() {
           </div>
         )}
 
+        <div className="lesson-workspace">
+        <div className="lesson-stage-column">
         {/* 사전은 무대를 덮지 않고 한 장의 큰 학습 카드로 보여 준다. */}
         {scene === "dictionary" && prepCard.length > 0 ? (
           <div className="dictionary-stage">
@@ -495,6 +576,7 @@ export default function Home() {
               </div>
           )}
         </div>}
+        </div>
 
         {/* 입력 — 모드는 서버가 지정한다 */}
         <div className="input-dock relative z-40 p-4 sm:p-5">
@@ -598,48 +680,70 @@ export default function Home() {
             </div>
           )}
 
-          {/* 문장 수준(사다리 3단계)에서만 직접 말하기 — 지금은 타이핑, 나중에 음성 */}
+          {/* 문장 수준에서는 글과 음성 중 편한 방법을 고른다. 음성 결과도
+              먼저 글로 보여 주고, 아이가 확인한 뒤 보내도록 한다. */}
           {input === "mic" && dictation && (
             <p className="mb-3 rounded-2xl border border-dashed border-[#d4b9e5] bg-[#f8f2fc] px-4 py-3 text-[13px] text-[#67547e]">
               사전 속 문장을 짧게 따라 써보자
             </p>
           )}
           {input === "mic" && (
-            <div className="answer-row flex gap-2">
-              <input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  // 한글 조합 중 Enter는 확정 키다 — 여기서 보내면 마지막 글자가 잘린다
-                  if (e.key === "Enter" && !e.nativeEvent.isComposing) submit();
-                }}
-                disabled={busy}
-                placeholder={
-                  onboarding
-                    ? "이름을 알려주세요…"
-                    : dictation
-                      ? "사전 문장을 따라 써요…"
-                      : "내 답을 써요…"
-                }
-                className="min-w-0 flex-1 rounded-2xl border-2 border-[#d8e9df] bg-white px-4 py-3 text-[16px] outline-none transition focus:border-[#69c49a]"
-              />
-              {/* 아이패드 화상 키보드에는 Enter가 눈에 띄지 않는다 — 보내기 버튼을 항상 둔다 */}
-              <button
-                onClick={submit}
-                disabled={busy || !text.trim()}
-                className="primary-action shrink-0 px-5 py-3 text-[15px]"
-              >
-                답 보내기
-              </button>
-              {!onboarding && (
-                <button
-                  onClick={() => say("", true)}
+            <div className="answer-composer">
+              <label className="answer-composer__label" htmlFor="child-answer">글로 쓰거나 말로 알려줘요</label>
+              <div className="answer-composer__main">
+                <input
+                  id="child-answer"
+                  value={text}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    setSpeechMessage(null);
+                  }}
+                  onKeyDown={(e) => {
+                    // 한글 조합 중 Enter는 확정 키다 — 여기서 보내면 마지막 글자가 잘린다
+                    if (e.key === "Enter" && !e.nativeEvent.isComposing) submit();
+                  }}
                   disabled={busy}
-                  className="secondary-action shrink-0 px-4 py-3 text-sm"
+                  placeholder={
+                    onboarding
+                      ? "이름을 알려주세요…"
+                      : dictation
+                        ? "사전 문장을 따라 써요…"
+                        : "여기에 답을 써요…"
+                  }
+                />
+                <button
+                  type="button"
+                  onClick={toggleSpeechInput}
+                  disabled={busy}
+                  aria-pressed={listening}
+                  className={`voice-input-button ${listening ? "is-listening" : ""}`}
                 >
-                  모르겠어
+                  <MicrophoneIcon />
+                  <span>{listening ? "듣는 중…" : "말로 답하기"}</span>
                 </button>
+              </div>
+              {speechMessage && (
+                <p className="speech-input-status" role="status">{speechMessage}</p>
               )}
+              <div className="answer-composer__actions">
+                {/* 아이패드 화상 키보드에는 Enter가 눈에 띄지 않는다 — 보내기 버튼을 항상 둔다 */}
+                <button
+                  onClick={submit}
+                  disabled={busy || !text.trim()}
+                  className="primary-action"
+                >
+                  답 보내기
+                </button>
+                {!onboarding && (
+                  <button
+                    onClick={() => say("", true)}
+                    disabled={busy}
+                    className="secondary-action"
+                  >
+                    모르겠어
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -730,6 +834,7 @@ export default function Home() {
             </button>
           )}
         </div>
+        </div>
       </div>
       </main>
 
@@ -798,6 +903,15 @@ function BookHintIcon() {
   return (
     <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 5.5c3.2-.7 5.9 0 8 2v12c-2.1-2-4.8-2.7-8-2V5.5Zm16 0c-3.2-.7-5.9 0-8 2v12c2.1-2 4.8-2.7 8-2V5.5Z" />
+    </svg>
+  );
+}
+
+function MicrophoneIcon() {
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="8" y="3" width="8" height="12" rx="4" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
     </svg>
   );
 }

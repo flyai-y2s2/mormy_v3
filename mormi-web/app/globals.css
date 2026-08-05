@@ -64,11 +64,13 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   letter-spacing: .01em;
 }
 
-.learning-app { min-height: calc(100vh - 34px); padding-bottom: 12px; }
-.mormy-shell { width: min(100%, 720px); margin-inline: auto; padding: 8px 14px 28px; }
+.learning-app { min-height: calc(100vh - 34px); padding-bottom: 8px; }
+.mormy-shell { width: min(100%, 1040px); margin-inline: auto; padding: 8px 18px 20px; }
 .lesson-frame { gap: 10px; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
 .lesson-frame.scene-room { min-height: 0; }
 .lesson-frame.scene-teaching,.lesson-frame.scene-dictionary,.lesson-frame.scene-unit_select { min-height: 0; }
+.lesson-workspace { display: grid; min-width: 0; gap: 10px; }
+.lesson-stage-column { display: flex; min-width: 0; flex-direction: column; gap: 10px; }
 .conversation-panel { border: 1px solid var(--line); border-radius: 22px; background: rgba(255,255,255,.92); box-shadow: 0 10px 28px rgba(47,82,65,.07); }
 .input-dock { margin-top: 0; border: 1px solid var(--line); border-radius: 24px; background: rgba(255,255,255,.95); box-shadow: 0 12px 32px rgba(47,82,65,.08); }
 .mormi-bubble { max-width: 88%; border: 1px solid #e8ddcd; border-radius: 22px 22px 22px 7px; background: #fffdf7; box-shadow: 0 8px 22px rgba(72,58,43,.08); }
@@ -85,7 +87,7 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .level-chip { display: inline-flex; align-items: center; border-radius: 999px; background: #e3f3ea; padding: 6px 11px; color: var(--mint-dark); font-size: 12px; }
 .teacher-panel { border: 1px solid rgba(81,89,82,.12); border-radius: 24px; background: rgba(255,253,247,.9); box-shadow: 0 14px 38px rgba(72,58,43,.08); }
 
-.app-header { display: flex; width: min(100%, 720px); margin-inline: auto; padding: 14px 16px 8px; align-items: center; justify-content: space-between; gap: 18px; }
+.app-header { display: flex; width: min(100%, 1040px); margin-inline: auto; padding: 12px 20px 7px; align-items: center; justify-content: space-between; gap: 18px; }
 .app-brand { display: flex; align-items: center; gap: 11px; }
 .app-brand__mark { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 14px; background: linear-gradient(145deg,#4c9473,#2f6d55); color: white; font-size: 19px; font-weight: 800; box-shadow: 0 7px 16px rgba(57,124,97,.18); }
 .app-brand div { display: flex; flex-direction: column; }
@@ -119,19 +121,19 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .stage-speech__caret { margin-left: 2px; color: var(--mint-dark); animation: caret .8s infinite; }
 
 .problem-slot { padding: 0; background: transparent; }
-.problem-board { width: min(100%, 680px); margin-inline: auto; border: 1.5px solid #dce8e2; border-radius: 28px; background: rgba(255,255,255,.96); padding: 16px 18px; text-align: left !important; box-shadow: 0 14px 36px rgba(49,78,64,.08); }
+.problem-board { width: 100%; margin-inline: auto; border: 1.5px solid #dce8e2; border-radius: 25px; background: rgba(255,255,255,.96); padding: 14px 17px; text-align: left !important; box-shadow: 0 14px 36px rgba(49,78,64,.08); }
 .problem-board__header { display: flex; align-items: center; justify-content: space-between; }
+.problem-board__meta { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .problem-board__eyebrow { border-radius: 999px; background: #e8f4ee; padding: 7px 12px; color: var(--mint-dark); font-size: 13px; font-weight: 750; }
-.problem-board__body { display: grid; margin-top: 9px; align-items: center; gap: 16px; grid-template-columns: minmax(0,1fr) 178px; }
+.problem-board__body { display: grid; margin-top: 8px; align-items: center; gap: 18px; grid-template-columns: minmax(0,1fr) 210px; }
 .problem-board__title { color: #69766f; font-size: 15px; font-weight: 650; }
 .problem-board__prompt { margin-top: 7px; color: var(--ink); font-size: 20px; font-weight: 800; line-height: 1.5; word-break: keep-all; }
 .problem-board__visual { display: flex; min-width: 0; align-items: center; justify-content: center; gap: 14px; border-radius: 20px; background: linear-gradient(145deg,#eef8f3,#f3f1fb); padding: 9px 10px; }
 .problem-board .fraction-pizza { width: 80px !important; }
-.problem-board__tools { display: flex; margin-top: 12px; padding-top: 10px; justify-content: flex-end; border-top: 1px solid #edf1ee; }
 .dictionary-hint-button { display: inline-flex; align-items: center; gap: 7px; border: 1.5px solid #d7d3ea; border-radius: 999px; background: #f5f3fb; padding: 8px 12px; color: #675785; box-shadow: 0 6px 16px rgba(86,61,105,.07); transition: transform .16s,background .16s; }
 .dictionary-hint-button:hover { background: #fff; transform: translateY(-1px); }
-.dictionary-hint-button { min-height: 46px; padding-inline: 14px; }
-.dictionary-hint-button span { font-size: 15px; font-weight: 800; }
+.dictionary-hint-button { min-height: 40px; padding-inline: 12px; }
+.dictionary-hint-button span { font-size: 14px; font-weight: 800; }
 .dictionary-hint-button small { padding-left: 8px; border-left: 1px solid #dacde4; font-size: 12px; opacity: .72; }
 
 .login-shell { display: grid; min-height: calc(100vh - 34px); padding: 28px 18px; place-items: center; }
@@ -206,6 +208,21 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .input-dock input { min-height: 58px; font-size: 18px !important; }
 .input-dock .primary-action,.input-dock .secondary-action { min-height: 58px; font-size: 17px; font-weight: 780; }
 .input-dock .choice-card { font-weight: 750; }
+.answer-composer { display: flex; min-width: 0; flex-direction: column; gap: 10px; }
+.answer-composer__label { color: #596b62; font-family: var(--font-accent), var(--font-body), sans-serif; font-size: 16px; }
+.answer-composer__main { display: grid; min-width: 0; gap: 9px; grid-template-columns: minmax(0,1fr) auto; }
+.answer-composer__main input { width: 100%; min-width: 0; border: 2px solid #d8e9df; border-radius: 17px; background: white; padding: 12px 14px; color: var(--ink); outline: none; transition: border-color .16s,box-shadow .16s; }
+.answer-composer__main input:focus { border-color: var(--mint); box-shadow: 0 0 0 4px rgba(103,189,147,.13); }
+.voice-input-button { display: inline-flex; min-width: 142px; min-height: 58px; align-items: center; justify-content: center; gap: 8px; border: 2px solid #d9d2e8; border-radius: 17px; background: #f6f2fb; padding: 10px 14px; color: #65527f; font-size: 15px; transition: transform .16s,border-color .16s,background .16s; }
+.voice-input-button:hover { border-color: #ad95c5; background: white; transform: translateY(-1px); }
+.voice-input-button.is-listening { border-color: #f18f7d; background: #fff0ec; color: #a84434; box-shadow: 0 0 0 5px rgba(241,143,125,.15); animation: voice-pulse 1.2s ease-in-out infinite; }
+.voice-input-button .ui-icon { width: 21px; height: 21px; }
+.speech-input-status { margin: 0; border-radius: 12px; background: #f4f7f5; padding: 8px 10px; color: #657169; font-size: 13px; line-height: 1.45; }
+.answer-composer__actions { display: grid; gap: 9px; grid-template-columns: minmax(0,1fr) auto; }
+.answer-composer__actions .primary-action { padding-inline: 20px; }
+.answer-composer__actions .secondary-action { padding-inline: 18px; }
+
+@keyframes voice-pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(241,143,125,.12); } 50% { box-shadow: 0 0 0 8px rgba(241,143,125,.2); } }
 
 .problem-board,.mormi-room,.input-dock { animation: surface-in .32s cubic-bezier(.2,.8,.25,1) both; }
 @keyframes surface-in { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -227,6 +244,20 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .anim-scribble { animation: scribble 1.1s ease-in-out infinite; }
 @keyframes caret { 0%,45% { opacity: 1; } 46%,100% { opacity: 0; } }
 .hand-caret { animation: caret .8s infinite; }
+
+/* iPad는 가로 사용을 기본 시연 환경으로 본다. 문제는 위에 고정하고,
+   아래에서 모르미와 답변 도구를 동시에 보이게 해 키보드가 떠도 맥락이 남는다. */
+@media (min-width: 900px) and (orientation: landscape) {
+  .learning-app { min-height: calc(100dvh - 30px); }
+  .lesson-workspace { grid-template-columns: minmax(0,1.55fr) minmax(340px,.9fr); align-items: stretch; gap: 12px; }
+  .lesson-stage-column { height: 100%; }
+  .input-dock { display: flex; min-height: 260px; margin: 0; padding: 18px !important; flex-direction: column; justify-content: center; }
+  .problem-board__body { grid-template-columns: minmax(0,1fr) 230px; }
+  .problem-board__visual { padding-block: 7px; }
+  .problem-board .fraction-pizza { width: 72px !important; }
+  .scene-teaching .mormi-room { min-height: 286px; }
+  .scene-unit_select .input-dock { justify-content: flex-start; }
+}
 
 @media (max-width: 760px) {
   .app-header { padding: 10px 12px 2px; }
@@ -254,11 +285,7 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .problem-board__prompt { font-size: 18px; line-height: 1.5; }
   .problem-board__visual { min-width: 130px; gap: 10px; padding: 6px 8px; }
   .problem-board .fraction-pizza { width: 64px !important; }
-  .problem-board__tools { margin-top: 10px; padding-top: 9px; }
   .dictionary-hint-button { padding: 7px 10px; }
-  .answer-row { flex-wrap: wrap; }
-  .answer-row input { width: 100%; flex-basis: 100%; }
-  .answer-row button { flex: 1; }
   .dictionary-popup { border-radius: 24px; padding: 27px 20px 22px; }
   .dictionary-popup__rule { margin-block: 20px 16px; font-size: 21px; line-height: 1.65; }
   .dictionary-popup__visual { min-height: 96px; gap: 24px; }
@@ -274,6 +301,7 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 
 @media (max-width: 560px) {
   .problem-board__header { align-items: flex-start; gap: 8px; }
+  .problem-board__meta { align-items: flex-end; flex-direction: column; }
   .problem-board__eyebrow { font-size: 11px; }
   .problem-board__body { grid-template-columns: 1fr; }
   .problem-board__visual { width: 100%; min-height: 100px; }
@@ -283,6 +311,8 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .stage-step-heading { top: 13px; left: 14px; }
   .dictionary-popup { padding: 31px 18px 22px; }
   .dictionary-popup__visual { min-height: 116px; gap: 24px; padding: 12px; }
+  .answer-composer__main,.answer-composer__actions { grid-template-columns: 1fr; }
+  .voice-input-button { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

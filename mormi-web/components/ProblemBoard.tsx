@@ -18,7 +18,17 @@ export function ProblemBoard({ problem, onHint }: { problem: ProblemView; onHint
           <span className="step-heading__number">1</span>
           <strong>문제를 봐요</strong>
         </div>
-        <span className="problem-board__eyebrow">{problem.eyebrow}</span>
+        <div className="problem-board__meta">
+          <span className="problem-board__eyebrow">{problem.eyebrow}</span>
+          {problem.hint && onHint && (
+            <button className="dictionary-hint-button" onClick={onHint}>
+              <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 5.5c3.2-.7 5.9 0 8 2v12c-2.1-2-4.8-2.7-8-2V5.5Zm16 0c-3.2-.7-5.9 0-8 2v12c2.1-2 4.8-2.7 8-2V5.5Z" />
+              </svg>
+              <span>힌트 보기</span>
+            </button>
+          )}
+        </div>
       </header>
       <div className="problem-board__body">
         <div className="problem-board__copy">
@@ -36,17 +46,6 @@ export function ProblemBoard({ problem, onHint }: { problem: ProblemView; onHint
           ))}
         </div>
       </div>
-      {problem.hint && onHint && (
-        <div className="problem-board__tools">
-          <button className="dictionary-hint-button" onClick={onHint}>
-            <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 5.5c3.2-.7 5.9 0 8 2v12c-2.1-2-4.8-2.7-8-2V5.5Zm16 0c-3.2-.7-5.9 0-8 2v12c2.1-2 4.8-2.7 8-2V5.5Z" />
-            </svg>
-            <span>궁금해 사전</span>
-            <small>힌트 보기</small>
-          </button>
-        </div>
-      )}
     </section>
   );
 }
