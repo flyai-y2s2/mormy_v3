@@ -325,10 +325,12 @@ export default function Home() {
 
   async function login(account: DemoAccount) {
     activeAccountRef.current = account;
-    setActiveAccount(account);
     setShowNotes(false);
     setShowHint(false);
+    // 계정만 먼저 열면 세션 응답이 오기 전의 빈 공부방이 한 프레임 보인다.
+    // 로그인 화면을 유지하다가 첫 장면이 모두 준비된 뒤 한 번에 전환한다.
     await newSession(account);
+    setActiveAccount(account);
   }
 
   async function createAccount(name: string, avatar: string) {
