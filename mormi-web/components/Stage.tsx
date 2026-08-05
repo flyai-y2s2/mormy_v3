@@ -12,6 +12,7 @@ export function Stage({
   dialogue = [],
   speaking = false,
   showStep = false,
+  characterName = "모르미",
   children,
 }: {
   atDesk: boolean;
@@ -22,6 +23,7 @@ export function Stage({
   dialogue?: { role: "mormi" | "child"; text: string }[];
   speaking?: boolean;
   showStep?: boolean;
+  characterName?: string;
   children?: React.ReactNode;
 }) {
   const roomHeight = Math.min(400, Math.max(260, 220 + dialogue.length * 54));
@@ -44,7 +46,7 @@ export function Stage({
       {showStep && (
         <div className="stage-step-heading step-heading">
           <span className="step-heading__number">2</span>
-          <strong>모르미의 질문을 봐요</strong>
+          <strong>{characterName}의 질문을 봐요</strong>
         </div>
       )}
 
@@ -57,7 +59,7 @@ export function Stage({
         }
       >
         <div className="stage-character__shadow" aria-hidden="true" />
-        <Mormi mood={mood} size={atDesk ? 196 : 238} />
+        <Mormi mood={mood} size={atDesk ? 196 : 238} name={characterName} />
       </div>
 
       {dialogue.length > 0 && (
@@ -66,14 +68,14 @@ export function Stage({
           ref={dialogueRef}
           role="log"
           aria-live="polite"
-          aria-label="모르미와 나의 대화"
+          aria-label={`${characterName}와 나의 대화`}
         >
           {dialogue.map((entry, index) => (
             <div
               className={entry.role === "child" ? "stage-child-speech" : `stage-speech ${speaking && index === dialogue.length - 1 ? "is-speaking" : ""}`}
               key={`${entry.role}-${index}-${entry.text}`}
             >
-              <span className="stage-dialogue__speaker">{entry.role === "child" ? "내가 한 말" : "모르미"}</span>
+              <span className="stage-dialogue__speaker">{entry.role === "child" ? "내가 한 말" : characterName}</span>
               <span><FractionText text={entry.text} /></span>
               {speaking && index === dialogue.length - 1 && entry.role === "mormi" && (
                 <span className="stage-speech__caret" aria-hidden="true">▍</span>

@@ -543,6 +543,7 @@ export default function Home() {
             dialogue={stageDialogue}
             speaking={streaming !== null}
             showStep={scene === "teaching"}
+            characterName={name}
           >
             {scene === "closing" && (
               stamped ? (
@@ -858,7 +859,7 @@ export default function Home() {
         <div className="notes-backdrop" role="dialog" aria-modal="true" aria-label="별노트">
           <div className="notes-modal">
             <header>
-              <div><span className="notes-modal__icon"><StarNoteIcon /></span><div><strong>{activeAccount.name}의 별노트</strong><p>모르미에게 알려준 말이 여기에 남아요.</p></div></div>
+              <div><span className="notes-modal__icon"><StarNoteIcon /></span><div><strong>{activeAccount.name}의 별노트</strong><p>{name}에게 알려준 말이 여기에 남아요.</p></div></div>
               <button onClick={() => setShowNotes(false)} aria-label="별노트 닫기">×</button>
             </header>
             <StarNote

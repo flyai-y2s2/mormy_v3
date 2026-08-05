@@ -19,10 +19,12 @@ export function Mormi({
   mood = "idle",
   size = 150,
   bob = true,
+  name = "모르미",
 }: {
   mood?: Mood;
   size?: number;
   bob?: boolean;
+  name?: string;
 }) {
   return (
     <div
@@ -33,7 +35,7 @@ export function Mormi({
       <div className="absolute inset-x-[18%] bottom-[5%] h-[11%] rounded-full bg-[#6b4c35]/15 blur-md" />
       <Image
         src={IMAGE_BY_MOOD[mood]}
-        alt="모르미"
+        alt={name}
         fill
         sizes={`${size}px`}
         className="relative object-contain drop-shadow-[0_14px_18px_rgba(76,56,40,.16)]"
