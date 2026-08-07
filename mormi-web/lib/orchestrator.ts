@@ -1,5 +1,6 @@
 import { callClaude, callClaudeJson, callClaudeStream } from "./claude";
-import curriculum from "@/content/fractions.json";
+import curriculum from "@/content/life-math.json";
+import type { LearningVisual } from "./learning-visual";
 import {
   loadProfile,
   saveProfile,
@@ -32,14 +33,7 @@ export type Effect =
   | { type: "notebook_write"; text: string; coauthored?: boolean } // 삐뚤빼뚤 손글씨 타이핑
   | { type: "stamp" } // 도장 쿵 + 별 추가
   | { type: "dictionary_open"; concept: string } // 사전 펼침
-  // shade: 두 피자에 같은 칠. shades: 피자별로 다른 칠(등가·잔여 비교에 필요)
-  | {
-      type: "visual";
-      kind: "pizza";
-      compare: number[];
-      shade?: number;
-      shades?: number[];
-    }
+  | { type: "visual"; visual: LearningVisual }
   | { type: "mormi_move"; to: "desk" | "blocks" };
 
 export type InputMode =
@@ -88,7 +82,7 @@ export interface TurnResult {
   agreeOnly?: boolean;
   /** 지난 세션에 적힌 별노트 (세션 시작 시 1회) */
   pastNotes?: { text: string; day: number; coauthored?: boolean }[];
-  /** 책상 위에 놓인 분수 카드 두 장 — 지금 다루는 두 분수 */
+  /** 책상 위에 놓이는 현재 문제의 핵심 자료 */
   deskCards?: string[];
   /**
    * 사전 문장 따라 쓰기(읽기) 중이면 그 대상 문장.
@@ -96,15 +90,23 @@ export interface TurnResult {
    * 서버는 음성 모드인지 채팅 모드인지 모른다(STT 도입 시 서버 무변경).
    */
   dictation?: string;
-  /** 궁금해 사전 오른쪽 그림 — 지금 개념의 피자 (scene === "dictionary") */
-  prepVisual?: { compare: number[]; shade?: number; shades?: number[] };
+  /** 궁금해 사전 오른쪽 그림 자료 (scene === "dictionary") */
+  prepVisual?: LearningVisual;
+  /** 생활 테마 안의 순차 스테이지와 계정별 완료 상태 */
+  stages?: {
+    id: string;
+    concept: string;
+    unlocked: boolean;
+    completed: boolean;
+    final?: boolean;
+  }[];
   /** 화면에 계속 남아 있는 오늘의 문제판 — 판정 로직과 무관한 UI 메타데이터 */
   problem?: {
     eyebrow: string;
     title: string;
     prompt: string;
     hint?: string;
-    visual: { compare: number[]; shade?: number; shades?: number[] };
+    visual: LearningVisual;
   };
   report: ReportEntry[]; // 아이 화면에는 절대 노출하지 않는다
   elapsedSec: number;
@@ -151,7 +153,9 @@ interface Item {
   generalized_target?: string;
   choices_by_ladder?: Record<string, string[]>;
   hint: string;
-  visual: { type: "pizza"; compare: number[]; shade?: number; shades?: number[] };
+  visual: LearningVisual;
+  prerequisites?: string[];
+  final?: boolean;
   /** 수업 준비 카드 문장. KB 표준 밖의 개념은 여기에 직접 적는다(KB에 없으므로). */
   prep?: string[];
   correct_recap: string;
@@ -167,7 +171,7 @@ interface Item {
     choices: string[];
     correct: string;
     recap: string;
-    visual: { type: "pizza"; compare: number[]; shade?: number; shades?: number[] };
+    visual: LearningVisual;
   };
 }
 
@@ -369,8 +373,11 @@ function item(state: SessionState): Item {
   return items.find((i) => i.id === state.itemId) ?? items[0];
 }
 
-/** 책상 위 소품 카드 — 지금 비교하는 두 분수 (피자와 같은 분수) */
+/** 책상 위 소품 카드 — 지금 문제에서 보는 핵심 값 */
 function deskCardsOf(it: Item): string[] {
+  if (it.visual.type === "money") {
+    return it.visual.items.map((item) => `${item.label} ${item.price}원`);
+  }
   const { compare, shade, shades } = it.visual;
   return compare.map((n, i) => `${shades?.[i] ?? shade ?? 1}/${n}`);
 }
@@ -388,13 +395,30 @@ function dictionaryLine(it: Item): string {
 
 /** 시각적 반증 연출 지시 (item.visual 을 그대로 스프레드하면 type 이 덮인다) */
 function visualEffect(it: Item): Effect {
-  return {
-    type: "visual",
-    kind: "pizza",
-    compare: it.visual.compare,
-    shade: it.visual.shade,
-    shades: it.visual.shades,
-  };
+  return { type: "visual", visual: it.visual };
+}
+
+function completedIds(state: SessionState): Set<string> {
+  return new Set([
+    ...(state.profile.learnedIds ?? []),
+    ...state.learnedIds,
+  ]);
+}
+
+function itemUnlocked(state: SessionState, it: Item): boolean {
+  const done = completedIds(state);
+  return (it.prerequisites ?? []).every((id) => done.has(id));
+}
+
+function stageProgress(state: SessionState): NonNullable<TurnResult["stages"]> {
+  const done = completedIds(state);
+  return items.map((it) => ({
+    id: it.id,
+    concept: it.concept,
+    unlocked: itemUnlocked(state, it),
+    completed: done.has(it.id),
+    final: it.final,
+  }));
 }
 
 /** 사다리 단계에 맞는 입력 모드와 선택지 */
@@ -421,15 +445,11 @@ function problemFor(state: SessionState): TurnResult["problem"] {
 
   if (state.phase === "homework" && it.homework) {
     return {
-      eyebrow: "학교 숙제",
-      title: "한 번 더 풀어봐요",
+      eyebrow: "카페 연습",
+      title: "한 번 더 해봐요",
       prompt: it.homework.problem,
-      hint: "그림에서 한 조각의 크기를 먼저 비교해 봐요.",
-      visual: {
-        compare: it.homework.visual.compare,
-        shade: it.homework.visual.shade,
-        shades: it.homework.visual.shades,
-      },
+      hint: it.hint,
+      visual: it.homework.visual,
     };
   }
 
@@ -438,17 +458,13 @@ function problemFor(state: SessionState): TurnResult["problem"] {
   }
 
   return {
-    eyebrow: "오늘의 문제",
+    eyebrow: "카페 미션",
     title: it.concept,
     // 문제판에는 해결 대상만 둔다. 일반화 질문·힌트·반응은 모르미의
     // 대화이므로 캐릭터 옆 말풍선에서만 보여 준다.
     prompt: it.problem_prompt ?? it.mormi_wrong_try,
     hint: it.hint,
-    visual: {
-      compare: it.visual.compare,
-      shade: it.visual.shade,
-      shades: it.visual.shades,
-    },
+    visual: it.visual,
   };
 }
 
@@ -466,6 +482,7 @@ function result(
     mormiName: state.profile.mormiName,
     childName: state.profile.childName,
     problem: problemFor(state),
+    stages: stageProgress(state),
     ladder: state.ladder,
     report: state.report,
     elapsedSec: elapsed(state),
@@ -727,8 +744,8 @@ export async function beginSession(state: SessionState): Promise<TurnResult> {
 
   const greeting =
     p.sessionCount >= 1 && recent
-      ? `어제 배운 “${recent.text}” 기억해!\n오늘은 어떤 문제부터 알려 줄래?`
-      : `좋아, 준비됐어!\n오늘은 어떤 문제부터 알려 줄래?`;
+      ? `어제 같이 연습한 “${recent.text}” 기억해!\n오늘은 카페에 같이 가 볼까?`
+      : `카페에서 혼자 주문해 보고 싶어!\n옆에서 도와줄래?`;
 
   return result(state, {
     mood: "happy",
@@ -741,7 +758,10 @@ export async function beginSession(state: SessionState): Promise<TurnResult> {
 
 /** 단원 카드 선택 + '수업 준비하기' → 궁금해 사전이 펼쳐진다 */
 export function selectUnit(state: SessionState, concept: string): TurnResult {
-  const picked = items.find((i) => i.concept === concept) ?? items[0];
+  const requested = items.find((i) => i.concept === concept);
+  const picked = requested && itemUnlocked(state, requested)
+    ? requested
+    : items.find((it) => itemUnlocked(state, it)) ?? items[0];
   beginItem(state, picked);
   state.scene = "dictionary"; // 가르치기는 '준비 다 했어!' 이후에 시작한다
 
@@ -763,11 +783,7 @@ export function selectUnit(state: SessionState, concept: string): TurnResult {
     mormi: "",
     effects: [{ type: "dictionary_open", concept: picked.concept }],
     prepCard: card,
-    prepVisual: {
-      compare: picked.visual.compare,
-      shade: picked.visual.shade,
-      shades: picked.visual.shades,
-    },
+    prepVisual: picked.visual,
     input: "button",
   });
 }
@@ -778,7 +794,7 @@ export function readyToTeach(state: SessionState): TurnResult {
   const it = item(state);
   return result(state, {
     mood: "shy",
-    mormi: "이 문제, 어떻게 풀면 돼?\n나한테 알려 줘!",
+    mormi: "카페에서 이럴 땐 어떻게 하면 돼?\n나한테 알려 줘!",
     deskCards: deskCardsOf(it),
     input: "button",
   });
@@ -880,7 +896,7 @@ export async function stampSession(
 // ---------- LLM 호출 ----------
 
 interface Classification {
-  /** 답이 이 문제에만 해당하는 맥락적 설명인지, 다른 분수에도 통하는 일반 규칙인지 */
+  /** 답이 이 문제에만 해당하는지, 다른 생활 상황에도 통하는 규칙인지 */
   generalized?: boolean;
   /** 둘 중 하나를 고르는 질문에서, 아이가 어느 쪽인지(또는 똑같다고) 분명히 말했는가 */
   saidWhich?: boolean;
@@ -920,12 +936,12 @@ const CLASSIFICATION_SCHEMA = {
     generalized: {
       type: "boolean",
       description:
-        "아이의 답이 다른 분수에도 통하는 일반 규칙이면 true, 이 문제에만 해당하는 맥락적인 말이면 false",
+        "아이의 답이 다른 가게나 생활 상황에도 통하는 일반 규칙이면 true, 지금 문제에만 해당하면 false",
     },
     saidWhich: {
       type: "boolean",
       description:
-        "질문이 두 분수 중 하나를 고르는 질문일 때: 아이가 어느 쪽이 큰지(또는 똑같다고) 분명히 말했으면 true, 이유만 말하고 어느 쪽인지 말하지 않았으면 false",
+        "질문이 선택이나 계산 결과를 요구할 때: 아이가 무엇을 고르는지 또는 얼마인지 분명히 말했으면 true, 이유만 말했으면 false",
     },
     factual: {
       type: "boolean",
@@ -953,7 +969,7 @@ async function classify(
   const isGeneralize = state.phase === "generalize";
   const asked = currentQuestion(state, it);
   const expected = isGeneralize
-    ? (it.generalized_target ?? "다른 분수에도 통하는 일반 규칙을 아이의 말로 설명")
+    ? (it.generalized_target ?? "다른 생활 상황에도 통하는 규칙을 아이의 말로 설명")
     : (it.expected_by_ladder?.[String(state.ladder)] ?? it.correct_recap);
 
   // 판정 기준은 '완전한 설명'이 아니라 '지금 사다리 단계에서 기대하는 답'이다.
@@ -986,9 +1002,9 @@ AI 동생이 방금 아이에게 물은 질문: "${asked}"
 
 애매하면 아이에게 유리한 쪽(부분_가르침보다 옳은_가르침)으로 판정하라.
 
-단, 예외가 하나 있다: **지금 단계의 '기대하는 답'이 어느 쪽이 큰지(결론)까지 포함하는데, 아이가 이유만 말하고 어느 쪽인지 말하지 않았다면 — 그것은 옳은_가르침이 아니라 부분_가르침이다.**
-예: 질문 "3/4랑 5/6 중에 뭐가 더 커? 남은 건 똑같지?" / 아이의 답 "한 조각씩 먹은 건 맞는데 조각 크기가 다르잖아. 그니까 다르지"
-→ 오개념("똑같다")을 바로잡았고 방향도 맞지만, **어느 분수가 큰지 말하지 않았다** → 부분_가르침.
+단, 예외가 하나 있다: **기대하는 답이 메뉴 선택이나 계산 결과까지 포함하는데, 아이가 이유만 말하고 무엇을 고르는지 또는 얼마인지 말하지 않았다면 부분_가르침이다.**
+예: 질문 "5,000원으로 무엇을 살 수 있어?" / 아이의 답 "싼 걸 사야 해"
+→ 방향은 맞지만 **어떤 메뉴인지 말하지 않았다** → 부분_가르침.
 (빈칸·한 단어 단계처럼 기대하는 답 자체가 낱말인 경우에는 이 예외를 적용하지 않는다.)
 
 또한 factual 을 판정하라 — 아이 설명의 **근거가 사실인지** 본다. 결론이 맞아도 근거 계산이 틀렸으면 false다.
@@ -996,17 +1012,17 @@ AI 동생이 방금 아이에게 물은 질문: "${asked}"
 → 결론(1/2 = 2/4)은 맞지만 50÷4=10 이 사실이 아니므로 **false**.
 아이가 계산을 아예 안 했으면(규칙만 말했으면) true 로 둔다.
 
-또한 saidWhich 를 판정하라 — 질문이 두 분수 중 하나를 고르는 질문일 때, 아이가 **어느 쪽이 큰지(또는 똑같다고) 분명히 말했으면 true**, 이유·원리만 말하고 어느 쪽인지는 말하지 않았으면 false다.
-예: "조각 크기가 다르니까 다르지" → false (어느 쪽인지 없음) / "5/6이 더 커" → true / "둘이 똑같아" → true
+또한 saidWhich 를 판정하라 — 선택이나 계산 결과를 묻는 질문에서 아이가 **메뉴 또는 금액을 분명히 말했으면 true**, 이유만 말했으면 false다.
+예: "싼 걸 사야 해" → false / "딸기우유를 사" → true / "4,300원이야" → true
 
-또한 generalized 를 함께 판정하라 — 아이의 답이 **이 문제에만 해당하는 맥락적인 말**인지("많이 먹어", "피자가 커"), **다른 분수에도 통하는 일반 규칙**인지("분모가 클수록 작아져")를 구분한다.
-일반 규칙을 말했으면 true, 이 상황에 대한 설명에 그치면 false.
+또한 generalized 를 함께 판정하라 — 아이의 답이 **이 문제에만 해당하는 말**인지("우유는 2,500원이야"), **다른 가게에도 통하는 생활 규칙**인지("여러 가격은 모두 더해")를 구분한다.
+생활 규칙을 말했으면 true, 지금 상황의 계산에 그치면 false.
 
 마지막으로 note 를 작성하라 — 별노트에 적힐 한 문장이다.
 - label 이 옳은_가르침 또는 부분_가르침일 때만 작성하고, 그 외에는 빈 문자열.
 - 질문의 맥락과 아이의 답을 합쳐, **그 문장만 따로 봐도 무슨 뜻인지 이해되는 완결된 한 문장**으로 만들어라.
-  예: 질문 "1/2, 2/4 말고 3/6 같은 분수는 어때?" + 답 "다 반으로 똑같아" → "1/2랑 2/4랑 3/6은 다 반으로 똑같아"
-- 아이가 쓴 단어와 말투를 최대한 그대로 살려라. 질문에도 아이의 답에도 없는 새로운 지식·이유·숫자를 추가하지 마라. 아이가 쓰지 않은 수학 용어(분모, 분자, 단위분수 등)로 바꿔 말하지 마라.
+  예: 질문 "물건을 여러 개 사면 어떻게 해?" + 답 "가격을 다 더해" → "물건을 여러 개 사면 가격을 다 더해"
+- 아이가 쓴 단어와 말투를 최대한 그대로 살려라. 질문에도 아이의 답에도 없는 지식·이유·숫자를 추가하지 마라. 아이가 쓰지 않은 어려운 수학 용어로 바꿔 말하지 마라.
 - 반말, 30자 안팎.
 - note 는 반드시 평서문으로 쓴다. (아이가 되물은 말·질문을 그대로 옮기지 마라)
 - **factual 이 false 면, 사실과 다른 계산·근거는 note 에서 빼고 아이가 말한 옳은 결론만 남겨라.**
@@ -1030,13 +1046,13 @@ async function speak(
 절대 규칙:
 1. 반말, 1~2문장, 아이다운 말투. 한 문장은 25자 안팎으로 짧게 끊는다. 이모지 금지.
 2. 아이에게 "틀렸어"라고 절대 말하지 않는다.
-3. 배우지 않은 것을 갑자기 옳게 말하지 않는다. **개념을 설명하거나 정의하지 마라**("2/3은 3명이 나눈 것 중 2조각이야" 같은 말). 설명은 아이가 하는 것이고, 너는 묻는 쪽이다.
+3. 배우지 않은 것을 갑자기 옳게 말하지 않는다. **계산법을 먼저 설명하거나 답을 말하지 마라.** 설명은 아이가 하고, 너는 묻는 쪽이다.
 4. "똑똑하네" 같은 능력 평가 칭찬 금지. 사실을 인정하는 말만.
 5. 지시된 내용만 말한다. 새 화제를 열지 않는다.
 6. 너는 배우는 쪽이다. 아이의 답을 채점·평가하는 말("맞아!", "정답이야", "잘했어", "옳아")을 절대 쓰지 마라. 깨달은 사람의 말("아, 그렇구나!", "이제 알겠다!")로 반응하라.
 7. 아이의 말이 "안 들렸다", "못 들었다", "왜 말이 없어" 같은 소리를 절대 하지 마라. 입력이 비어 있으면 그건 아이가 버튼으로 답했다는 뜻이다.
 8. **맥락 없는 말을 하지 마라.** 아이는 화면과 지금까지의 대화만 본다.
-   - 앞에서 세운 적 없는 상황을 아는 것처럼 말하지 마라. "조각", "남은 조각", "나누는 사람" 같은 말은 **무엇을 나눈 조각인지가 이미 나왔을 때만** 쓸 수 있다. 안 나왔으면 "피자 2/3" 처럼 **단어 하나만 붙여** 상황을 세워라 — 설명을 덧붙이지 마라.
+   - 앞에서 세운 적 없는 메뉴나 금액을 새로 만들지 마라. 화면과 지시에 나온 메뉴·가격만 말하라.
    - 화면에 그림이 없을 수도 있으니 "이 그림 봐", "여기 보면" 처럼 무언가를 가리키는 말은 지시에 그림이 명시됐을 때만 쓰라.
    - "그럼", "이것도", "아까 그거"처럼 앞 내용을 가리키는 말은, 그 앞 내용이 실제로 이 대화에 있을 때만 쓰라.
 9. 아이의 말뜻을 모르면서 이해한 척하지 마라. 무슨 뜻인지 모르겠으면 되물어라.
@@ -1432,7 +1448,7 @@ function hasExceptionBudget(state: SessionState): boolean {
 /** 아직 다루지 않은 개념이 남았는가 */
 function remainingItems(state: SessionState): Item[] {
   const done = [...state.learnedIds, ...state.carriedIds];
-  return items.filter((i) => !done.includes(i.id));
+  return items.filter((i) => !done.includes(i.id) && itemUnlocked(state, i));
 }
 
 /** 개념 하나를 시작할 상태로 초기화 */
@@ -1695,7 +1711,7 @@ export async function continueTeaching(state: SessionState): Promise<TurnResult>
   state.phase = "teaching";
   return result(state, {
     mood: "happy",
-    mormi: "좋아! 다음은 뭘 가르쳐줄 거야? 골라줘!",
+    mormi: "좋아! 카페에서 다음은 뭘 해 볼까?",
     input: "cards",
     choices: rest.map((i) => i.concept),
   });
@@ -1775,13 +1791,7 @@ function homeworkItem(state: SessionState): Item | null {
 }
 
 function homeworkVisual(hw: NonNullable<Item["homework"]>): Effect {
-  return {
-    type: "visual",
-    kind: "pizza",
-    compare: hw.visual.compare,
-    shade: hw.visual.shade,
-    shades: hw.visual.shades,
-  };
+  return { type: "visual", visual: hw.visual };
 }
 
 /**
@@ -1803,7 +1813,7 @@ function beginHomework(
 
   // 문제는 위 문제판에 계속 보인다. 말풍선에서 다시 읽지 않고 모르미의
   // 짧은 생각만 보여, 아이가 같은 긴 문장을 두 번 읽지 않게 한다.
-  const ask = `숙제에서 막혔어. ${hw.mormi_wrong_try}`;
+  const ask = `카페에서 한 번 더 해 볼래. ${hw.mormi_wrong_try}`;
 
   return result(state, {
     mood: "confident",
@@ -1834,7 +1844,7 @@ async function onHomeworkAnswer(
   if (correct) {
     state.report.push({
       grade: "낮음",
-      note: `${it.concept}: 시험지 형식(숫자) 문제로도 전이 성공 (긍정 신호)`,
+      note: `${it.concept}: 다른 카페 상황으로도 전이 성공 (긍정 신호)`,
     });
     const mormi = await speak(state,
       `아이가 내 숙제 풀이를 바로잡아 "${childText}" 라고 짚어줬다. "아~!" 하고 깨달아라.
@@ -1871,7 +1881,7 @@ async function onHomeworkAnswer(
   // 개념은 설명했는데 숫자 문제로는 넘어가지 못했다는 뜻이다.
   state.report.push({
     grade: "높음",
-    note: `${it.concept}: 개념은 설명했으나 시험지 형식(숫자) 문제로 전이되지 않음 — 같은 유형 절차 연습 권장`,
+    note: `${it.concept}: 첫 상황은 설명했으나 다른 카페 상황으로 전이되지 않음 — 같은 생활 절차 반복 권장`,
   });
   const mormi = await speak(state,
     `숙제에서 한 번 더 확인이 필요했다. 아이를 탓하거나 틀렸다고 말하지 말고, 아까 아이가 알려준 것을 스스로 떠올려 답에 도달하라: "잠깐, 아까 네가 알려준 거 다시 생각해보니까… ${hw.recap}" 그리고 아이 덕분에 풀었다고 고마움을 표현하라.`,

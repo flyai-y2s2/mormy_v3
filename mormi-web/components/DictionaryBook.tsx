@@ -1,5 +1,6 @@
-import { FractionPizza } from "./FractionPizza";
 import { FractionText } from "./FractionText";
+import { LearningVisual } from "./LearningVisual";
+import type { LearningVisual as LearningVisualSpec } from "@/lib/learning-visual";
 
 /** 책상 위에 덮여 있는 궁금해 사전 (room·teaching 씬) */
 export function ClosedBook({ onClick }: { onClick?: () => void }) {
@@ -26,7 +27,7 @@ export function OpenBook({
   visual,
 }: {
   concepts: string[];
-  visual?: { compare: number[]; shade?: number; shades?: number[] };
+  visual?: LearningVisualSpec;
 }) {
   const rule = concepts[0] ?? "규칙을 그림으로 다시 살펴봐요.";
   return (
@@ -47,14 +48,7 @@ export function OpenBook({
       </p>
       <div className="dictionary-popup__visual">
         {visual ? (
-          visual.compare.map((n, i) => (
-            <FractionPizza
-              key={n}
-              n={n}
-              shade={visual.shades?.[i] ?? visual.shade ?? 1}
-              size={86}
-            />
-          ))
+          <LearningVisual visual={visual} />
         ) : (
           <span className="text-sm text-stone-400">그림으로 확인해요</span>
         )}

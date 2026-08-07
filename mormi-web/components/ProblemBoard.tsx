@@ -1,12 +1,13 @@
-import { FractionPizza } from "./FractionPizza";
 import { FractionText } from "./FractionText";
+import { LearningVisual } from "./LearningVisual";
+import type { LearningVisual as LearningVisualSpec } from "@/lib/learning-visual";
 
 export interface ProblemView {
   eyebrow: string;
   title: string;
   prompt: string;
   hint?: string;
-  visual: { compare: number[]; shade?: number; shades?: number[] };
+  visual: LearningVisualSpec;
 }
 
 /** 해결되기 전까지 화면 중앙에 남는 문제판. 그림은 풀이 근거로 사용한다. */
@@ -35,15 +36,8 @@ export function ProblemBoard({ problem, onHint }: { problem: ProblemView; onHint
           <h2 id="problem-title" className="problem-board__title">{problem.title}</h2>
           <p className="problem-board__prompt"><FractionText text={problem.prompt} /></p>
         </div>
-        <div className="problem-board__visual" aria-label="문제를 푸는 데 사용하는 분수 그림">
-          {problem.visual.compare.map((n, index) => (
-            <FractionPizza
-              key={`${n}-${index}`}
-              n={n}
-              shade={problem.visual.shades?.[index] ?? problem.visual.shade ?? 1}
-              size={82}
-            />
-          ))}
+        <div className="problem-board__visual">
+          <LearningVisual visual={problem.visual} />
         </div>
       </div>
     </section>

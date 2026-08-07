@@ -1,15 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --cream: #f3f7f4;
-  --paper: #ffffff;
+  --font-body: "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --font-accent: var(--font-hand), "Apple SD Gothic Neo", sans-serif;
+  --cream: #fff8df;
+  --paper: #fffef9;
   --ink: #24332d;
   --muted: #738079;
-  --mint: #67bd93;
+  --mint: #5fc59a;
   --mint-dark: #36765d;
   --coral: #f18f7d;
   --sun: #f4c968;
-  --line: #dce7e1;
+  --sky: #bfe4f5;
+  --lilac: #dfd4f4;
+  --line: #e8dfca;
 }
 
 @theme inline {
@@ -24,11 +28,12 @@ html, body { min-height: 100%; }
 
 body {
   margin: 0;
+  font-family: var(--font-body);
   color: var(--ink);
   background:
-    radial-gradient(circle at 12% 6%, rgba(129,202,166,.2), transparent 26rem),
-    radial-gradient(circle at 92% 18%, rgba(171,184,239,.18), transparent 30rem),
-    linear-gradient(180deg,#f8fbf9 0%,#edf3ef 100%);
+    radial-gradient(circle at 10% 4%, rgba(161,226,201,.36), transparent 25rem),
+    radial-gradient(circle at 92% 12%, rgba(190,219,250,.45), transparent 29rem),
+    linear-gradient(180deg,#fffdf4 0%,#f5fbf6 100%);
   overflow-x: hidden;
 }
 
@@ -37,10 +42,10 @@ body::before {
   position: fixed;
   inset: 0;
   z-index: -1;
-  opacity: .15;
+  opacity: .12;
   pointer-events: none;
-  background-image: radial-gradient(#5f8172 .6px, transparent .6px);
-  background-size: 22px 22px;
+  background-image: radial-gradient(#5f8172 .7px, transparent .7px);
+  background-size: 26px 26px;
 }
 
 button, input { font: inherit; }
@@ -234,6 +239,122 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .answer-composer__actions .primary-action { padding-inline: 20px; }
 .answer-composer__actions .secondary-action { padding-inline: 18px; }
 
+/* 생활 수학 홈 — 아이가 글을 읽기 전에 색·그림·위치로 다음 행동을 찾는다. */
+.life-home,.cafe-map { width: 100%; min-height: clamp(590px,calc(100dvh - 132px),760px); }
+.life-home { display: grid; grid-template-columns: minmax(280px,.85fr) minmax(0,1.4fr); gap: 18px; }
+.life-home__intro { position: relative; display: flex; min-height: 100%; overflow: hidden; border: 3px solid #c9ead9; border-radius: 36px 36px 36px 16px; background: linear-gradient(160deg,#e7f8ef 0%,#fff2c9 100%); flex-direction: column; align-items: center; justify-content: flex-end; box-shadow: 0 16px 0 rgba(73,137,107,.08),0 22px 48px rgba(65,91,76,.11); }
+.life-home__intro::before,.life-home__intro::after { content: ""; position: absolute; border-radius: 50%; background: rgba(255,255,255,.7); }
+.life-home__intro::before { top: 40px; left: -36px; width: 150px; height: 90px; }
+.life-home__intro::after { top: 105px; right: -28px; width: 120px; height: 72px; }
+.life-home__intro .mormi-figure { z-index: 2; margin-bottom: 12px; }
+.life-home__speech { position: relative; z-index: 4; width: calc(100% - 42px); margin: 25px 21px 4px; border: 3px solid #cfe8da; border-radius: 28px 28px 28px 10px; background: #fffef9; padding: 19px 20px; box-shadow: 0 12px 24px rgba(58,91,73,.1); }
+.life-home__speech::after { content: ""; position: absolute; bottom: -11px; left: 50%; width: 18px; height: 18px; border-right: 3px solid #cfe8da; border-bottom: 3px solid #cfe8da; background: #fffef9; transform: translateX(-50%) rotate(45deg); }
+.life-home__speech > span { display: block; color: var(--mint-dark); font-family: var(--font-accent),sans-serif; font-size: 14px; }
+.life-home__speech strong { display: block; margin-top: 5px; font-family: var(--font-accent),sans-serif; font-size: clamp(22px,2.4vw,31px); font-weight: 400; line-height: 1.35; word-break: keep-all; }
+.life-home__speech p { margin-top: 7px; color: #6d786f; font-size: 14px; line-height: 1.55; }
+.life-themes { display: grid; gap: 13px; grid-template-rows: 1.25fr 1fr 1fr; }
+.life-theme { position: relative; display: grid; min-width: 0; overflow: hidden; border: 3px solid #e6dbc1; border-radius: 32px 32px 32px 12px; background: #fffef9; padding: 20px 22px; grid-template-columns: 88px minmax(0,1fr) auto; align-items: center; gap: 18px; color: var(--ink); text-align: left; box-shadow: 0 10px 0 rgba(120,96,58,.07),0 16px 32px rgba(69,83,73,.08); transition: transform .18s,border-color .18s,box-shadow .18s; }
+button.life-theme:hover { border-color: var(--mint); transform: translateY(-3px) rotate(-.25deg); box-shadow: 0 13px 0 rgba(78,151,115,.11),0 22px 38px rgba(69,83,73,.1); }
+button.life-theme:active { transform: translateY(4px); box-shadow: 0 4px 0 rgba(78,151,115,.11); }
+.life-theme--cafe { border-color: #f2c975; background: linear-gradient(135deg,#fff1bc 0%,#fffaf0 68%); }
+.life-theme--market { background: linear-gradient(135deg,#e4f5ea,#fffef9); }
+.life-theme--bus { background: linear-gradient(135deg,#e6f3fb,#fffef9); }
+.life-theme__picture { display: grid; width: 78px; height: 78px; place-items: center; border-radius: 27px 27px 27px 9px; background: rgba(255,255,255,.8); font-size: 40px; box-shadow: inset 0 -5px 0 rgba(90,75,48,.06); }
+.life-theme__copy { display: flex; min-width: 0; flex-direction: column; }
+.life-theme__copy small { color: #9b7440; font-family: var(--font-accent),sans-serif; font-size: 13px; }
+.life-theme__copy strong { margin-top: 4px; font-family: var(--font-accent),sans-serif; font-size: clamp(22px,2.5vw,30px); font-weight: 400; }
+.life-theme__copy span { margin-top: 5px; color: #6f7972; font-size: 14px; }
+.life-theme__go,.life-theme__soon { display: grid; min-width: 64px; min-height: 48px; place-items: center; border-radius: 18px 18px 18px 7px; font-family: var(--font-accent),sans-serif; font-size: 16px; }
+.life-theme__go { background: var(--mint); color: white; box-shadow: 0 5px 0 var(--mint-dark); }
+.life-theme__soon { background: rgba(255,255,255,.74); color: #89928c; font-size: 13px; }
+.life-theme.is-coming { opacity: .72; }
+
+/* 카페 스테이지 맵 — 위아래로 이어지는 놀이판이지만 iPad 가로에서는 한 줄로 보인다. */
+.cafe-map { overflow: hidden; border: 3px solid #ebd9b5; border-radius: 38px 38px 38px 16px; background: linear-gradient(160deg,#fff7d8 0%,#f4fbf7 58%,#e7f3fb 100%); padding: 24px; box-shadow: 0 18px 0 rgba(108,85,51,.07),0 26px 52px rgba(62,80,68,.1); }
+.cafe-map__header { display: flex; min-height: 210px; align-items: center; justify-content: space-between; gap: 20px; }
+.cafe-map__kicker { display: inline-flex; border-radius: 999px; background: #fff0b8; padding: 8px 13px; color: #8d6323; font-family: var(--font-accent),sans-serif; font-size: 14px; }
+.cafe-map__header h1 { margin-top: 10px; font-family: var(--font-accent),sans-serif; font-size: clamp(34px,5vw,54px); font-weight: 400; letter-spacing: -.03em; }
+.cafe-map__header p { margin-top: 7px; color: #707c74; font-size: 16px; }
+.cafe-map__friend { display: flex; align-items: flex-end; gap: 8px; }
+.cafe-map__speech { position: relative; margin-bottom: 42px; border: 3px solid #cee8db; border-radius: 26px 26px 10px 26px; background: #fffef9; padding: 15px 18px; box-shadow: 0 10px 20px rgba(56,87,70,.09); }
+.cafe-map__speech::after { content: ""; position: absolute; right: -10px; bottom: 17px; width: 17px; height: 17px; border-top: 3px solid #cee8db; border-right: 3px solid #cee8db; background: #fffef9; transform: rotate(45deg); }
+.cafe-map__speech strong,.cafe-map__speech span { display: block; }
+.cafe-map__speech strong { font-family: var(--font-accent),sans-serif; font-size: 20px; font-weight: 400; }
+.cafe-map__speech span { margin-top: 4px; color: #6d786f; font-size: 14px; }
+.cafe-stage-path { position: relative; display: grid; margin: 8px 0 0; padding: 0; gap: 13px; grid-template-columns: repeat(4,minmax(0,1fr)); list-style: none; }
+.cafe-stage-path::before { content: ""; position: absolute; top: 50%; right: 6%; left: 6%; height: 10px; border-radius: 999px; background: repeating-linear-gradient(90deg,#d9c79f 0 15px,transparent 15px 27px); transform: translateY(-50%); }
+.cafe-stage-path li { position: relative; z-index: 1; }
+.cafe-stage { display: flex; width: 100%; min-height: 245px; border: 3px solid #d6e7de; border-radius: 30px 30px 30px 12px; background: #fffef9; padding: 18px; flex-direction: column; align-items: flex-start; color: var(--ink); text-align: left; box-shadow: 0 9px 0 rgba(66,118,91,.1),0 16px 28px rgba(67,83,72,.09); transition: transform .18s,border-color .18s; }
+.cafe-stage:not(:disabled):hover { border-color: var(--mint); transform: translateY(-5px) rotate(-.4deg); }
+.cafe-stage__number { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 14px 14px 14px 5px; background: var(--mint-dark); color: white; font-family: var(--font-accent),sans-serif; font-size: 19px; }
+.cafe-stage__icon { margin-top: 18px; font-size: 38px; }
+.cafe-stage__copy { display: flex; margin-top: 11px; flex-direction: column; }
+.cafe-stage__copy strong { font-family: var(--font-accent),sans-serif; font-size: 20px; font-weight: 400; line-height: 1.25; word-break: keep-all; }
+.cafe-stage__copy small { margin-top: 5px; color: #738078; font-size: 13px; }
+.cafe-stage__state { margin-top: auto; color: var(--mint-dark); font-family: var(--font-accent),sans-serif; font-size: 14px; }
+.cafe-stage.is-complete { border-color: #95d5b7; background: #f0fbf5; }
+.cafe-stage.is-locked { border-color: #dedbd2; background: #f4f2ed; color: #8e948f; box-shadow: 0 7px 0 rgba(98,99,95,.07); }
+.cafe-stage.is-locked .cafe-stage__number { background: #d8d6d0; color: #777d78; font-size: 14px; }
+.cafe-stage.is-locked .cafe-stage__icon { filter: grayscale(1); opacity: .55; }
+.cafe-stage.is-locked .cafe-stage__state { color: #969b96; font-size: 12px; }
+.cafe-stage-path li.is-final .cafe-stage { border-color: #efbd53; background: linear-gradient(145deg,#fff0b8,#fffdf4); }
+.cafe-stage-path li.is-final .cafe-stage__number { background: #efad35; }
+
+/* 돈 그림 — 장식이 아니라 문제 풀이에 직접 쓰이는 가격표다. */
+.fraction-visual { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.money-visual { display: grid; width: 100%; gap: 10px; }
+.money-visual__items { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit,minmax(94px,1fr)); }
+.menu-price-card { display: grid; min-width: 0; border: 2px solid #f0d7a9; border-radius: 20px 20px 20px 8px; background: #fffaf0; padding: 9px; place-items: center; text-align: center; }
+.menu-price-card__emoji { font-size: 30px; }
+.menu-price-card__label { margin-top: 3px; color: #6e756f; font-size: 12px; }
+.menu-price-card strong { margin-top: 2px; color: #8e552f; font-family: var(--font-accent),sans-serif; font-size: 17px; font-weight: 400; white-space: nowrap; }
+.money-visual__cash { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; }
+.money-visual__cash > span { display: flex; min-width: 92px; border-radius: 14px 14px 14px 5px; background: #e5f5ec; padding: 7px 9px; flex-direction: column; align-items: center; }
+.money-visual__cash small { color: #678071; font-size: 10px; }
+.money-visual__cash strong { margin-top: 1px; color: var(--mint-dark); font-family: var(--font-accent),sans-serif; font-size: 15px; font-weight: 400; white-space: nowrap; }
+.money-visual.is-compact .menu-price-card { padding: 6px 8px; }
+.money-visual.is-compact .menu-price-card__emoji { font-size: 24px; }
+.stage-learning-visual { position: absolute; right: 20px; bottom: 16px; z-index: 7; width: min(48%,280px); border: 2px solid #f0d7a9; border-radius: 22px 22px 22px 8px; background: rgba(255,254,249,.97); padding: 10px; box-shadow: 0 12px 25px rgba(71,65,48,.12); }
+
+/* 기존 화면도 같은 놀이책 질감으로 연결한다. */
+.problem-board,.mormi-room,.input-dock,.dictionary-popup { border-width: 3px; border-color: #e8dfc9; border-radius: 30px 30px 30px 12px; }
+.problem-board { background: #fffef9; box-shadow: 0 10px 0 rgba(117,90,47,.06),0 18px 36px rgba(49,78,64,.08); }
+.problem-board__eyebrow { background: #fff0b8; color: #8b6428; }
+.problem-board__visual { background: linear-gradient(145deg,#fff3c9,#e8f7ef); }
+.mormi-room { background: linear-gradient(145deg,#e6f7ee 0%,#e8f3fb 58%,#fff0d7 100%); }
+.input-dock { background: #fffef9; box-shadow: 0 9px 0 rgba(101,79,45,.06),0 18px 34px rgba(47,82,65,.08); }
+.choice-card { border-width: 3px; border-radius: 24px 24px 24px 9px; background: #fffef9; }
+.primary-action { border-radius: 22px 22px 22px 8px; }
+.secondary-action { border-width: 2px; border-radius: 20px 20px 20px 8px; }
+.dictionary-popup { background: #fffef9; }
+.dictionary-popup__title { background: #e8e0f5; }
+.dictionary-popup__visual { background: linear-gradient(145deg,#fff2bd,#e8f7ef); }
+
+@media (max-width: 850px) {
+  .life-home { grid-template-columns: 1fr; }
+  .life-home__intro { min-height: 480px; }
+  .life-themes { grid-template-rows: auto; }
+  .cafe-map__header { align-items: flex-start; }
+  .cafe-stage-path { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .cafe-stage-path::before { display: none; }
+}
+
+@media (max-width: 560px) {
+  .life-home,.cafe-map { min-height: 0; }
+  .life-home__intro { min-height: 430px; border-radius: 28px 28px 28px 12px; }
+  .life-home__speech { width: calc(100% - 28px); margin-inline: 14px; }
+  .life-theme { padding: 16px; grid-template-columns: 64px minmax(0,1fr); gap: 12px; border-radius: 25px 25px 25px 10px; }
+  .life-theme__picture { width: 60px; height: 60px; border-radius: 20px 20px 20px 8px; font-size: 31px; }
+  .life-theme__go,.life-theme__soon { grid-column: 1 / -1; min-height: 42px; }
+  .cafe-map { padding: 17px; border-radius: 28px 28px 28px 12px; }
+  .cafe-map__header { min-height: 0; flex-direction: column; }
+  .cafe-map__friend { width: 100%; justify-content: center; }
+  .cafe-map__speech { margin-bottom: 58px; }
+  .cafe-stage-path { grid-template-columns: 1fr; }
+  .cafe-stage { min-height: 190px; }
+  .stage-learning-visual { display: none; }
+}
+
 @keyframes voice-pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(241,143,125,.12); } 50% { box-shadow: 0 0 0 8px rgba(241,143,125,.2); } }
 
 .problem-board,.mormi-room,.input-dock { animation: surface-in .32s cubic-bezier(.2,.8,.25,1) both; }
@@ -322,20 +443,26 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 
   /* 문제가 있는 수업 화면은 '읽기 → 답하기' 순서로 묶는다.
      문제와 모르미의 질문을 같은 줄에서 보고, 답변은 그 아래 전체 폭을 쓴다. */
-  .lesson-frame:has(> .problem-slot) { display: grid; min-height: clamp(620px,calc(100dvh - 150px),850px); grid-template-columns: minmax(0,.84fr) minmax(0,1.16fr); grid-template-rows: 330px minmax(220px,1fr); align-items: stretch; gap: 12px; }
+  .lesson-frame:has(> .problem-slot) { display: grid; min-height: clamp(620px,calc(100dvh - 150px),850px); grid-template-columns: minmax(0,.86fr) minmax(0,1.14fr); grid-template-rows: minmax(390px,1fr) 176px; align-items: stretch; gap: 12px; }
   .lesson-frame:has(> .problem-slot) > .problem-slot { min-width: 0; grid-column: 1; grid-row: 1; }
   .lesson-frame:has(> .problem-slot) > .lesson-workspace { display: contents; }
   .lesson-frame:has(> .problem-slot) .lesson-stage-column { min-width: 0; grid-column: 2; grid-row: 1; }
-  .lesson-frame:has(> .problem-slot) .input-dock { width: 100%; min-height: 0; grid-column: 1 / -1; grid-row: 2; }
+  .lesson-frame:has(> .problem-slot) .input-dock { width: 100%; min-height: 176px; grid-column: 1 / -1; grid-row: 2; }
   .lesson-frame:has(> .problem-slot) .problem-board,
-  .lesson-frame:has(> .problem-slot) .mormi-room { height: 100% !important; min-height: 330px; }
+  .lesson-frame:has(> .problem-slot) .mormi-room { height: 100% !important; min-height: 390px; }
   .lesson-frame:has(> .problem-slot) .stage-character { left: 17% !important; }
   .lesson-frame:has(> .problem-slot) .stage-dialogue.is-desk { left: 34%; right: 3%; max-height: calc(100% - 76px); }
   .lesson-frame:has(> .problem-slot) .stage-speech { width: 100%; }
-  .lesson-frame:has(> .problem-slot) .problem-board { display: flex; padding: 13px 15px; flex-direction: column; }
-  .lesson-frame:has(> .problem-slot) .problem-board__body { margin-top: 0; flex: 1; gap: 10px; grid-template-columns: minmax(0,1fr) 142px; }
-  .lesson-frame:has(> .problem-slot) .problem-board__prompt { font-size: 18px; }
-  .lesson-frame:has(> .problem-slot) .problem-board__visual { gap: 7px; padding: 6px; }
+  .lesson-frame:has(> .problem-slot) .problem-board { display: flex; padding: 18px; flex-direction: column; }
+  .lesson-frame:has(> .problem-slot) .problem-board__body { margin-top: 12px; flex: 1; gap: 16px; grid-template-columns: minmax(0,1fr) 178px; }
+  .lesson-frame:has(> .problem-slot) .problem-board__title { font-size: 17px; }
+  .lesson-frame:has(> .problem-slot) .problem-board__prompt { font-size: 22px; }
+  .lesson-frame:has(> .problem-slot) .problem-board__visual { gap: 9px; padding: 10px; }
+  .lesson-frame:has(> .problem-slot) .menu-price-card__emoji { font-size: 34px; }
+  .lesson-frame:has(> .problem-slot) .menu-price-card__label { font-size: 13px; }
+  .lesson-frame:has(> .problem-slot) .menu-price-card strong { font-size: 18px; }
+  .lesson-frame:has(> .problem-slot) .money-visual__cash strong { font-size: 17px; }
+  .lesson-frame:has(> .problem-slot) .input-dock .primary-action { min-height: 72px; font-size: 20px; }
   .lesson-frame:has(> .problem-slot) .problem-board .fraction-pizza { width: 55px !important; }
   .lesson-frame:has(> .problem-slot) .answer-composer__main { grid-template-columns: minmax(0,1fr) 170px; }
 

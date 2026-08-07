@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Stage } from "@/components/Stage";
 import { OpenBook } from "@/components/DictionaryBook";
-import { FractionPizza } from "@/components/FractionPizza";
 import { FractionText } from "@/components/FractionText";
+import { LearningVisual } from "@/components/LearningVisual";
+import { LifeThemeHome } from "@/components/LifeThemeHome";
+import { CafeStageMap, type CafeStageSummary } from "@/components/CafeStageMap";
 import { StarNote } from "@/components/StarNote";
 import { DemoLogin } from "@/components/DemoLogin";
 import { ProblemBoard, type ProblemView } from "@/components/ProblemBoard";
@@ -18,6 +20,7 @@ import {
   type DemoAccount,
 } from "@/lib/demo-accounts";
 import type { Mood } from "@/components/Mormi";
+import type { LearningVisual as LearningVisualSpec } from "@/lib/learning-visual";
 
 type Scene =
   | "onboarding"
@@ -42,13 +45,7 @@ type Effect =
   | { type: "notebook_write"; text: string; coauthored?: boolean }
   | { type: "stamp" }
   | { type: "dictionary_open"; concept: string }
-  | {
-      type: "visual";
-      kind: "pizza";
-      compare: number[];
-      shade?: number;
-      shades?: number[];
-    }
+  | { type: "visual"; visual: LearningVisualSpec }
   | { type: "mormi_move"; to: "desk" | "blocks" };
 
 interface Turn {
@@ -74,7 +71,8 @@ interface Turn {
   profile?: unknown;
   pastNotes?: { text: string; day: number; coauthored?: boolean }[];
   deskCards?: string[];
-  prepVisual?: { compare: number[]; shade?: number; shades?: number[] };
+  prepVisual?: LearningVisualSpec;
+  stages?: CafeStageSummary[];
   problem?: ProblemView;
   report: { grade: string; note: string }[];
   elapsedSec: number;
@@ -519,6 +517,13 @@ export default function Home() {
     (note, index, items) =>
       items.findIndex((candidate) => candidate.text === note.text) === index,
   );
+  const cafeStages: CafeStageSummary[] = turn?.stages ?? (turn?.choices ?? []).map((concept, index) => ({
+    id: `cafe-stage-${index + 1}`,
+    concept,
+    unlocked: index === 0,
+    completed: false,
+    final: index === 3,
+  }));
 
   async function confirmNotePreview() {
     if (savingNotePreview) return;
@@ -547,7 +552,7 @@ export default function Home() {
       <header className="app-header">
         <div className="app-brand">
           <span className="app-brand__mark" aria-hidden="true">M</span>
-          <div><strong>{name}</strong><span>내가 가르치는 수학방</span></div>
+          <div><strong>{name}</strong><span>나와 함께하는 생활연습</span></div>
         </div>
         <nav className="app-account" aria-label="계정 메뉴">
           <button className="header-pill" onClick={() => setShowNotes(true)}>
@@ -562,6 +567,29 @@ export default function Home() {
       </header>
 
       <main className="mormy-shell flex w-full flex-1 items-start">
+      {scene === "room" ? (
+        <LifeThemeHome
+          name={name}
+          childName={activeAccount.name}
+          busy={busy || !sid}
+          onCafe={() => {
+            setDialogueHistory([]);
+            track("life_theme_selected", { theme: "cafe" });
+            void post({ action: "begin" });
+          }}
+        />
+      ) : scene === "unit_select" ? (
+        <CafeStageMap
+          name={name}
+          stages={cafeStages}
+          busy={busy}
+          onSelect={(concept) => {
+            setDialogueHistory([]);
+            track("life_stage_selected", { concept });
+            void post({ action: "selectUnit", concept });
+          }}
+        />
+      ) : (
       <div className={`lesson-frame scene-${scene} relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden`}>
         {turn?.problem && (
           <div className="problem-slot">
@@ -606,15 +634,8 @@ export default function Home() {
 
           {/* 시각적 반증 — 교정하는 주체는 모르미가 아니라 이 그림이다 */}
           {visual && !turn?.problem && (
-            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-end gap-5 rounded-xl border-2 border-[#d9b98a] bg-white/95 px-6 py-3 shadow-lg">
-              {visual.compare.map((n, i) => (
-                <FractionPizza
-                  key={n}
-                  n={n}
-                  shade={visual.shades?.[i] ?? visual.shade ?? 1}
-                  size={86}
-                />
-              ))}
+            <div className="stage-learning-visual">
+              <LearningVisual visual={visual.visual} compact />
             </div>
           )}
         </div>
@@ -645,16 +666,9 @@ export default function Home() {
             <button
               onClick={() => {
                 const action =
-                  scene === "room"
-                    ? "begin"
-                    : scene === "dictionary"
-                      ? "ready"
-                      : "accept";
-                // 시작 인사는 역할 안내로 끝난다. 단계 카드 화면까지 남겨 두면
-                // 새 질문과 겹쳐 전환이 끊겨 보이므로 다음 장면에서는 비운다.
-                if (action === "begin") {
-                  setDialogueHistory([]);
-                }
+                  scene === "dictionary"
+                    ? "ready"
+                    : "accept";
                 // '응, 물어봐' — 여기서부터 실제 가르치기가 시작된다.
                 // 정확한 단원 id 는 서버 diff 이벤트가 실어준다.
                 if (action === "accept") {
@@ -668,11 +682,7 @@ export default function Home() {
               disabled={busy || !sid}
               className="primary-action w-full py-4 text-[18px] font-bold"
             >
-              {scene === "room"
-                ? "공부 시작하기"
-                : scene === "dictionary"
-                  ? "문제 풀러 가기"
-                  : "문제 풀기"}
+              {scene === "dictionary" ? "카페 미션 시작하기" : "문제 풀기"}
             </button>
           )}
 
@@ -901,6 +911,7 @@ export default function Home() {
         </div>
         </div>
       </div>
+      )}
       </main>
 
       {showNotes && (
