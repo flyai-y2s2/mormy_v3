@@ -79,6 +79,8 @@ test("keeps four official areas and 36 playable sessions in the curriculum", asy
   assert.match(app, /selectedDrillAnswer/);
   assert.match(css, /\.answer-grid button\.is-correct/);
   assert.match(css, /\.answer-grid button\.is-wrong/);
+  assert.match(css, /↻ 한 번 더/);
+  assert.doesNotMatch(css, /× 다시 생각/);
   assert.match(css, /grid-template-columns: repeat\(4, 1fr\)/);
   assert.match(app, /correctPosition = Math\.abs\(seed\) % \(answers\.length \+ 1\)/);
   assert.match(app, /shuffleProblemAnswers\(varyProblem\(problem, seed\), seed\)/);

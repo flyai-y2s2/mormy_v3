@@ -504,7 +504,7 @@ function LifeMissionGame({ session, problem, progress, solved, onAnswer, onFinis
           return <button key={answer} className={result} onClick={() => submitMissionAnswer(answer, true)} aria-pressed={selectedAnswer === answer} disabled={answerLocked}>{readableChoice(answer)}</button>;
         })}</div>
         <div className={`mission-answer-feedback ${answerFeedback ? `is-${answerFeedback}` : ""}`} role="status" aria-live="polite">
-          {answerFeedback === "correct" ? "정답이에요! 생활 속에서도 잘 해냈어요." : answerFeedback === "wrong" ? "아쉬워요. 빨간 답 말고 다시 생각해 봐요." : "답을 고르면 바로 알려 줄게요."}
+          {answerFeedback === "correct" ? "정답이에요! 생활 속에서도 잘 해냈어요." : answerFeedback === "wrong" ? "괜찮아요. 그림을 보고 한 번 더 골라 봐요." : "답을 고르면 바로 알려 줄게요."}
         </div>
         <button type="button" className="direct-answer-toggle" onClick={() => setShowTyping((value) => !value)}>{showTyping ? "직접 쓰기 닫기" : "⌨ 직접 써서 답하기"}</button>
         {showTyping && <form className="mission-write" onSubmit={(event) => { event.preventDefault(); if (typedAnswer.trim()) submitMissionAnswer(typedAnswer); }}>
@@ -705,7 +705,7 @@ export function MoramiApp() {
         }
       }, 850);
     } else {
-      setDrillFeedback("아쉬워요. 빨간 답 말고 다른 답을 골라 봐요.");
+      setDrillFeedback("괜찮아요. 그림을 보고 한 번 더 골라 봐요.");
     }
   }
 
