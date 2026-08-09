@@ -458,6 +458,17 @@ function Morami({ expression, size = "large" }: { expression: Expression; size?:
   );
 }
 
+function CurriculumCourseButton({ session, index, completed, onOpen }: { session: Session; index: number; completed: boolean; onOpen: (index: number) => void }) {
+  const alignment = curriculumForSession(session);
+  return (
+    <button className={completed ? "is-complete" : ""} onClick={() => onOpen(index)}>
+      <i>{completed ? "완료" : session.level}</i>
+      <span><b>{session.title}</b><small>{alignment.gradeBand} · {alignment.code} · {session.unit} {session.level}단계</small></span>
+      <em>시작</em>
+    </button>
+  );
+}
+
 function SpeechBubble({ children }: { children: React.ReactNode }) {
   return (
     <div className="speech-bubble">
@@ -537,6 +548,13 @@ export function MoramiApp() {
   }, [homeworkBase, homeworkIndex, variantSeed]);
   const activeArea = areaForSession(activeSession.id);
   const selectedArea = mathAreas.find((area) => area.id === selectedAreaId) ?? null;
+  const selectedAreaSessions = useMemo(() => selectedArea?.sessionIds.map((id) => sessions.find((session) => session.id === id)).filter((session): session is Session => Boolean(session)) ?? [], [selectedArea]);
+  const selectedUnitGroups = useMemo(() => {
+    const groups = new Map<string, Session[]>();
+    selectedAreaSessions.forEach((session) => groups.set(session.unit, [...(groups.get(session.unit) ?? []), session]));
+    return Array.from(groups, ([unit, unitSessions]) => ({ unit, sessions: unitSessions }));
+  }, [selectedAreaSessions]);
+  const groupLongArea = selectedAreaSessions.length > 12;
   const sentenceBank = useMemo(() => activeSession.sentenceWords.map((word, index) => ({ id: `${variantSeed}-${sessionIndex}-${index}`, word })), [activeSession.sentenceWords, sessionIndex, variantSeed]);
 
   const askMorami = useCallback(async (event: MoramiEvent, fallbackDialogue: string, fallbackExpression: Expression, ladderLevel = ladder) => {
@@ -839,15 +857,26 @@ export function MoramiApp() {
               <div className="grade-band-roadmap">
                 {selectedArea.gradeBands.map((band) => <article key={band.label}><b>{band.label}</b><p>{band.topics}</p></article>)}
               </div>
-              <div className="area-detail-label"><strong>지금 열려 있는 맞춤 연습</strong><span>{selectedArea.sessionIds.length}개 · 정규 범위를 작은 단계로 나눴어요</span></div>
-              <div className="math-course-list math-course-list--detail">
-                {selectedArea.sessionIds.map((id) => sessions.find((session) => session.id === id)).filter((session): session is Session => Boolean(session)).map((session) => {
-                  const index = sessions.findIndex((candidate) => candidate.id === session.id);
-                  const completed = completedSessionIds.includes(session.id);
-                  const alignment = curriculumForSession(session);
-                  return <button key={session.id} className={completed ? "is-complete" : ""} onClick={() => openSession(index)}><i>{completed ? "완료" : session.level}</i><span><b>{session.title}</b><small>{alignment.gradeBand} · {alignment.code} · {session.unit} {session.level}단계</small></span><em>시작</em></button>;
-                })}
-              </div>
+              <div className="area-detail-label"><strong>{groupLongArea ? "6개 학습 묶음" : "지금 열려 있는 맞춤 연습"}</strong><span>{groupLongArea ? `${selectedAreaSessions.length}개 세부 연습을 비슷한 내용끼리 모았어요` : `${selectedAreaSessions.length}개 · 정규 범위를 작은 단계로 나눴어요`}</span></div>
+              {groupLongArea ? (
+                <div className="course-unit-list">
+                  {selectedUnitGroups.map((group, groupIndex) => {
+                    const completedCount = group.sessions.filter((session) => completedSessionIds.includes(session.id)).length;
+                    return (
+                      <details className="course-unit-card" key={group.unit} open={groupIndex === 0}>
+                        <summary><span><b>{group.unit}</b><small>{group.sessions.length}개 연습</small></span><em>{completedCount ? `${completedCount}/${group.sessions.length} 완료` : "눌러서 보기"}</em><i aria-hidden="true">›</i></summary>
+                        <div className="math-course-list math-course-list--nested">
+                          {group.sessions.map((session) => <CurriculumCourseButton key={session.id} session={session} index={sessions.findIndex((candidate) => candidate.id === session.id)} completed={completedSessionIds.includes(session.id)} onOpen={openSession} />)}
+                        </div>
+                      </details>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="math-course-list math-course-list--detail">
+                  {selectedAreaSessions.map((session) => <CurriculumCourseButton key={session.id} session={session} index={sessions.findIndex((candidate) => candidate.id === session.id)} completed={completedSessionIds.includes(session.id)} onOpen={openSession} />)}
+                </div>
+              )}
             </div>
           )}
         </section>
