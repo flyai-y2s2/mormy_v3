@@ -52,8 +52,17 @@ test("keeps four official areas and 36 playable sessions in the curriculum", asy
   assert.match(app, /LifeMissionGame/);
   assert.match(app, /life-missions\/cafe\.webp/);
   assert.match(app, /life-missions\/market\.webp/);
+  assert.match(app, /life-missions\/stationery\.jpg/);
+  assert.match(app, /life-missions\/toyshop\.jpg/);
+  assert.match(app, /life-missions\/snackshop\.jpg/);
+  assert.match(app, /life-missions\/giftshop\.jpg/);
   assert.match(app, /life-missions\/workshop\.webp/);
   assert.match(app, /life-missions\/fair\.webp/);
+  assert.match(app, /products\/notebook\.jpg/);
+  assert.match(app, /products\/pencil\.jpg/);
+  assert.match(app, /function sceneForProduct/);
+  assert.match(app, /problem\.visual\.type === "money" \? <StoreOrder/);
+  assert.doesNotMatch(app, /story\.scene === "cafe" \? <CafeOrder/);
   assert.match(app, /selectedAreaId/);
   assert.match(app, /math-areas\/add-subtract\.webp/);
   assert.match(app, /math-area-visual/);

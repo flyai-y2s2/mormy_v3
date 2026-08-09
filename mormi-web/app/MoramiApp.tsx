@@ -311,17 +311,52 @@ type RecognitionLike = {
 };
 type RecognitionConstructor = new () => RecognitionLike;
 
-type MissionScene = "cafe" | "market" | "workshop" | "fair";
+type MissionScene = "cafe" | "market" | "stationery" | "toyshop" | "snackshop" | "giftshop" | "workshop" | "fair";
+type ProductScene = Extract<MissionScene, "cafe" | "market" | "stationery" | "toyshop" | "snackshop" | "giftshop">;
 
 const missionBackgrounds: Record<MissionScene, string> = {
   cafe: "/life-missions/cafe.webp",
   market: "/life-missions/market.webp",
+  stationery: "/life-missions/stationery.jpg",
+  toyshop: "/life-missions/toyshop.jpg",
+  snackshop: "/life-missions/snackshop.jpg",
+  giftshop: "/life-missions/giftshop.jpg",
   workshop: "/life-missions/workshop.webp",
   fair: "/life-missions/fair.webp",
 };
 
-function missionStory(session: Session): { scene: MissionScene; place: string; title: string; action: string } {
-  if (session.subject === "money") return { scene: "cafe", place: "동네 카페", title: "손님의 주문을 계산해요", action: "계산대 답 누르기" };
+const productScenes: Record<string, ProductScene> = {
+  공책: "stationery", 색연필: "stationery", 연필: "stationery", 지우개: "stationery", 스티커: "stationery", 책: "stationery", 자: "stationery", 풀: "stationery",
+  장난감: "toyshop", 퍼즐: "toyshop", 인형: "toyshop", 공: "toyshop",
+  가방: "giftshop", 운동화: "giftshop", 선물: "giftshop", 카드: "giftshop",
+  빵: "snackshop", 우유: "snackshop", 간식: "snackshop", 주스: "snackshop", 과자: "snackshop", 과일: "snackshop", 물: "snackshop", 김밥: "snackshop",
+  커피: "cafe", "커피 세트": "cafe", "카페 선물세트": "cafe",
+};
+
+function sceneForProduct(label: string): ProductScene {
+  return productScenes[label] ?? "market";
+}
+
+const moneySceneCopy: Record<ProductScene, { place: string }> = {
+  cafe: { place: "동네 카페" },
+  market: { place: "동네 계산대" },
+  stationery: { place: "동네 문구점" },
+  toyshop: { place: "장난감 가게" },
+  snackshop: { place: "동네 간식 가게" },
+  giftshop: { place: "선물 가게" },
+};
+
+function missionStory(session: Session, problem: Problem): { scene: MissionScene; place: string; title: string; action: string } {
+  if (problem.visual.type === "money") {
+    const firstProduct = problem.visual.labels?.[0];
+    const scene = firstProduct ? sceneForProduct(firstProduct) : session.subject === "money" ? "cafe" : "market";
+    const title = problem.visual.paid
+      ? "손님에게 줄 거스름돈을 계산해요"
+      : problem.visual.amounts.length > 1
+        ? "두 물건값을 합쳐 계산해요"
+        : "물건값을 계산해요";
+    return { scene, place: moneySceneCopy[scene].place, title, action: "계산대에 답 쓰기" };
+  }
   if (session.subject === "number") return { scene: "market", place: "과일 가게", title: "진열할 물건을 정확히 세어요", action: "바구니 답 고르기" };
   if (session.subject === "addition") return { scene: "market", place: "동네 가게", title: "두 장바구니를 합쳐 계산해요", action: "합계표 고르기" };
   if (session.subject === "subtraction") return { scene: "market", place: "동네 가게", title: "팔고 남은 물건을 확인해요", action: "남은 수 고르기" };
@@ -338,19 +373,47 @@ function missionStory(session: Session): { scene: MissionScene; place: string; t
     : { scene: "fair", place: "축제 투표 부스", title: "친구들의 표를 정리해 결과를 알려요", action: "결과판 고르기" };
 }
 
-function productImage(label: string, index: number) {
-  if (/물|우유|주스/.test(label)) return "/life-missions/juice.webp";
-  if (/빵|김밥|간식/.test(label)) return "/life-missions/bread.webp";
-  return index % 2 === 0 ? "/life-missions/coffee.webp" : "/life-missions/bread.webp";
+const productImages: Record<string, string> = {
+  공책: "/life-missions/products/notebook.jpg",
+  색연필: "/life-missions/products/colored-pencils.jpg",
+  연필: "/life-missions/products/pencil.jpg",
+  지우개: "/life-missions/products/eraser.jpg",
+  스티커: "/life-missions/products/stickers.jpg",
+  책: "/life-missions/products/book.jpg",
+  자: "/life-missions/products/ruler.jpg",
+  풀: "/life-missions/products/glue.jpg",
+  장난감: "/life-missions/products/toy.jpg",
+  퍼즐: "/life-missions/products/puzzle.jpg",
+  인형: "/life-missions/products/doll.jpg",
+  공: "/life-missions/products/ball.jpg",
+  가방: "/life-missions/products/bag.jpg",
+  운동화: "/life-missions/products/sneakers.jpg",
+  선물: "/life-missions/products/gift.jpg",
+  카드: "/life-missions/products/card.jpg",
+  우유: "/life-missions/products/milk.jpg",
+  간식: "/life-missions/products/snack.jpg",
+  과자: "/life-missions/products/snack.jpg",
+  과일: "/life-missions/products/fruit.jpg",
+  물: "/life-missions/products/water.jpg",
+  주스: "/life-missions/juice.webp",
+  빵: "/life-missions/bread.webp",
+  김밥: "/life-missions/bread.webp",
+  커피: "/life-missions/coffee.webp",
+  "커피 세트": "/life-missions/coffee.webp",
+  "카페 선물세트": "/life-missions/coffee.webp",
+};
+
+function productImage(label: string) {
+  return productImages[label] ?? "/life-missions/products/gift.jpg";
 }
 
-function CafeOrder({ problem }: { problem: Problem }) {
+function StoreOrder({ problem }: { problem: Problem }) {
   if (problem.visual.type !== "money" || !problem.visual.labels?.length) return <div className="mission-prop mission-prop--register"><ProblemCard problem={problem} /></div>;
   return (
-    <div className="cafe-order" aria-label="카페 주문 메뉴">
+    <div className="cafe-order" aria-label="가게 상품과 가격">
       {problem.visual.amounts.map((amount, index) => {
-        const label = problem.visual.type === "money" ? problem.visual.labels?.[index] ?? `메뉴 ${index + 1}` : `메뉴 ${index + 1}`;
-        return <div className="cafe-product" key={`${label}-${amount}`}><Image src={productImage(label, index)} alt={label} width={520} height={520} unoptimized /><span><b>{label}</b><strong>{amount.toLocaleString("ko-KR")}원</strong></span></div>;
+        const label = problem.visual.type === "money" ? problem.visual.labels?.[index] ?? `상품 ${index + 1}` : `상품 ${index + 1}`;
+        return <div className="cafe-product" key={`${label}-${amount}`}><Image src={productImage(label)} alt={`${label} 상품 사진`} width={720} height={720} unoptimized /><span><b>{label}</b><strong>{amount.toLocaleString("ko-KR")}원</strong></span></div>;
       })}
       {problem.visual.paid && <div className="customer-money"><small>손님이 낸 돈</small><b>{problem.visual.paid.toLocaleString("ko-KR")}원</b></div>}
     </div>
@@ -358,7 +421,7 @@ function CafeOrder({ problem }: { problem: Problem }) {
 }
 
 function LifeMissionGame({ session, problem, progress, solved, onAnswer, onFinish }: { session: Session; problem: Problem; progress: string; solved: boolean; onAnswer: (answer: string) => void; onFinish: () => void }) {
-  const story = missionStory(session);
+  const story = missionStory(session, problem);
   const [typedAnswer, setTypedAnswer] = useState("");
   const [showChoices, setShowChoices] = useState(false);
   useEffect(() => { setTypedAnswer(""); setShowChoices(false); }, [problem.prompt, progress]);
@@ -368,7 +431,7 @@ function LifeMissionGame({ session, problem, progress, solved, onAnswer, onFinis
       <div className="mission-hud"><span>{story.place}</span><b>현장 미션 {progress}</b></div>
       <div className="mission-order"><small>오늘 할 일</small><h1>{solved ? "현장 미션 성공!" : story.title}</h1><p>{solved ? "배운 수학을 진짜 장면에서 써냈어요." : problem.prompt}</p></div>
       <div className="mission-playfield">
-        {story.scene === "cafe" ? <CafeOrder problem={problem} /> : <div className={`mission-prop mission-prop--${story.scene}`}><ProblemCard problem={problem} /></div>}
+        {problem.visual.type === "money" ? <StoreOrder problem={problem} /> : <div className={`mission-prop mission-prop--${story.scene}`}><ProblemCard problem={problem} /></div>}
       </div>
       {!solved ? <div className="mission-controls">
         <p>{story.action} · 먼저 직접 써 봐요</p>
