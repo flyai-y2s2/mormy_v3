@@ -839,9 +839,9 @@ export function MoramiApp() {
                   const done = area.sessionIds.filter((id) => completedSessionIds.includes(id)).length;
                   return (
                     <button className="math-area-card" key={area.id} style={{ "--area-color": area.color } as React.CSSProperties} onClick={() => showArea(area.id)}>
-                      <div className="math-area-visual"><Image src={areaImages[area.id]} alt={`${area.title} 대단원을 나타내는 학습 그림`} width={640} height={640} unoptimized /><span>{done ? `${done}개 완료` : "1~6학년"}</span></div>
+                      <div className="math-area-visual"><Image src={areaImages[area.id]} alt={`${area.title} 대단원을 나타내는 학습 그림`} width={640} height={640} unoptimized /><span>1~6학년</span></div>
                       <div className="math-area-heading"><p>{area.title}</p><small>{area.description}</small></div>
-                      <div className="math-area-footer"><span>3개 학년군 정규 범위</span><em>교육과정 보기 <b>›</b></em></div>
+                      <div className="math-area-footer"><span>{done ? `학습 진행 · ${done}개 완료` : "3개 학년군 정규 범위"}</span><em>교육과정 보기 <b>›</b></em></div>
                     </button>
                   );
                 })}
