@@ -15,10 +15,8 @@
 
 # next.js
 /.next/
+/.vinext/
 /out/
-
-# production
-/build
 
 # misc
 .DS_Store
@@ -32,18 +30,11 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
-# 키 넣을 자리를 알려주는 템플릿은 커밋한다 (실제 키는 .env.local 에만 둔다)
-!.env.local.example
 
 # vercel
 .vercel
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# 아이 프로필 (로컬 상태 — 커밋하지 않는다)
-/data
-
-# Vercel CLI 로컬 링크
-.vercel
+/dist/
+/.wrangler/
+/outputs/
+/work/
