@@ -215,6 +215,39 @@ function shuffleWords(words: string[], seed: number) {
   return shuffled;
 }
 
+function fourAnswerCandidates(problem: Problem) {
+  const candidates: string[] = [];
+  const numberParts = problem.correct.match(/\d[\d,]*/g) ?? [];
+  if (numberParts.length === 1) {
+    const numberText = numberParts[0];
+    const value = Number(numberText.replaceAll(",", ""));
+    const step = value >= 1000 ? 500 : value >= 100 ? 100 : value >= 20 ? 5 : 2;
+    [value + step, Math.max(0, value - step), value + step * 2].forEach((candidate) => {
+      const formatted = numberText.includes(",") || problem.correct.includes("원")
+        ? candidate.toLocaleString("ko-KR")
+        : String(candidate);
+      candidates.push(problem.correct.replace(numberText, formatted));
+    });
+  }
+
+  if (problem.answers.some((answer) => ["왼쪽", "오른쪽", "같아"].includes(answer))) candidates.push("판단할 수 없어");
+  if (problem.answers.some((answer) => ["첫째", "둘째", "셋째"].includes(answer))) candidates.push("넷째");
+  if (problem.visual.type === "shapes") candidates.push("오각형", "반원");
+  if (problem.visual.type === "pattern") candidates.push("◆", "★", "↗");
+  if (problem.visual.type === "chart") candidates.push(...problem.visual.labels, "표가 같아");
+  candidates.push("모두 아니야", "알 수 없어", "조건이 부족해");
+  return candidates;
+}
+
+function ensureFourAnswers(problem: Problem) {
+  const answers = Array.from(new Set([problem.correct, ...problem.answers]));
+  for (const candidate of fourAnswerCandidates(problem)) {
+    if (answers.length >= 4) break;
+    if (!answers.includes(candidate)) answers.push(candidate);
+  }
+  return answers.slice(0, 4);
+}
+
 function varyProblem(problem: Problem, seed: number): Problem {
   const step = Math.abs(seed % 4) + 1;
   if (problem.visual.type === "objects" || problem.visual.type === "equation") {
@@ -269,7 +302,7 @@ function varyProblem(problem: Problem, seed: number): Problem {
 }
 
 function shuffleProblemAnswers(problem: Problem, seed: number): Problem {
-  const otherAnswers = problem.answers.filter((answer) => answer !== problem.correct);
+  const otherAnswers = ensureFourAnswers(problem).filter((answer) => answer !== problem.correct);
   const answers = shuffleWords(otherAnswers, seed + 101);
   const correctPosition = Math.abs(seed) % (answers.length + 1);
   answers.splice(correctPosition, 0, problem.correct);
@@ -424,7 +457,17 @@ function LifeMissionGame({ session, problem, progress, solved, onAnswer, onFinis
   const story = missionStory(session, problem);
   const [typedAnswer, setTypedAnswer] = useState("");
   const [showChoices, setShowChoices] = useState(false);
-  useEffect(() => { setTypedAnswer(""); setShowChoices(false); }, [problem.prompt, progress]);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [answerFeedback, setAnswerFeedback] = useState<"correct" | "wrong" | null>(null);
+  useEffect(() => { setTypedAnswer(""); setShowChoices(false); setSelectedAnswer(null); setAnswerFeedback(null); }, [problem.prompt, progress]);
+
+  function submitMissionAnswer(answer: string, fromChoice = false) {
+    const isCorrect = answersMatch(answer, problem.correct);
+    setSelectedAnswer(fromChoice ? answer : null);
+    setAnswerFeedback(isCorrect ? "correct" : "wrong");
+    onAnswer(answer);
+  }
+
   return (
     <div className={`life-game life-game--${story.scene}`} style={{ "--mission-bg": `url(${missionBackgrounds[story.scene]})` } as React.CSSProperties}>
       <div className="life-game-shade" />
@@ -435,12 +478,18 @@ function LifeMissionGame({ session, problem, progress, solved, onAnswer, onFinis
       </div>
       {!solved ? <div className="mission-controls">
         <p>{story.action} · 먼저 직접 써 봐요</p>
-        <form className="mission-write" onSubmit={(event) => { event.preventDefault(); if (typedAnswer.trim()) onAnswer(typedAnswer); }}>
+        <form className="mission-write" onSubmit={(event) => { event.preventDefault(); if (typedAnswer.trim()) submitMissionAnswer(typedAnswer); }}>
           <input value={typedAnswer} onChange={(event) => setTypedAnswer(event.target.value)} placeholder="답을 직접 입력해요" aria-label="생활 미션 답 직접 입력" autoComplete="off" />
           <button type="submit" disabled={!typedAnswer.trim()}>확인</button>
         </form>
         <button type="button" className="choice-toggle" onClick={() => setShowChoices((value) => !value)}>{showChoices ? "보기 닫기" : "잘 모르겠어요 · 보기 열기"}</button>
-        {showChoices && <div className="mission-choice-list">{problem.answers.map((answer) => <button key={answer} onClick={() => onAnswer(answer)}>{answer}</button>)}</div>}
+        {showChoices && <div className="mission-choice-list">{problem.answers.map((answer) => {
+          const result = selectedAnswer === answer ? (answersMatch(answer, problem.correct) ? "is-correct" : "is-wrong") : "";
+          return <button key={answer} className={result} onClick={() => submitMissionAnswer(answer, true)} aria-pressed={selectedAnswer === answer}>{answer}</button>;
+        })}</div>}
+        <div className={`mission-answer-feedback ${answerFeedback ? `is-${answerFeedback}` : ""}`} role="status" aria-live="polite">
+          {answerFeedback === "correct" ? "정답이에요! 생활 속에서도 잘 해냈어요." : answerFeedback === "wrong" ? "아쉬워요. 빨간 답 말고 다시 생각해 봐요." : "답을 고르면 바로 알려 줄게요."}
+        </div>
       </div>
         : <button className="mission-finish" onClick={onFinish}>오늘 여행 마치기 <span className="button-arrow" /></button>}
     </div>
@@ -521,6 +570,7 @@ export function MoramiApp() {
   const [drillCorrect, setDrillCorrect] = useState(0);
   const [drillAttempts, setDrillAttempts] = useState(0);
   const [drillFeedback, setDrillFeedback] = useState("");
+  const [selectedDrillAnswer, setSelectedDrillAnswer] = useState<string | null>(null);
   const [drillLocked, setDrillLocked] = useState(false);
   const [mastered, setMastered] = useState(false);
   const [ladder, setLadder] = useState(3);
@@ -616,14 +666,16 @@ export function MoramiApp() {
 
   function answerDrill(answer: string) {
     if (drillLocked || mastered) return;
+    setSelectedDrillAnswer(answer);
     setDrillAttempts((count) => count + 1);
     if (answer === currentDrill.correct) {
       const nextCorrect = drillCorrect + 1;
       setDrillCorrect(nextCorrect);
-      setDrillFeedback("한 번 더 익혔어!");
+      setDrillFeedback("정답이에요! 정말 잘했어요.");
       setDrillLocked(true);
       window.setTimeout(() => {
         setDrillFeedback("");
+        setSelectedDrillAnswer(null);
         setDrillLocked(false);
         if (nextCorrect >= masteryTarget) {
           setMastered(true);
@@ -632,7 +684,7 @@ export function MoramiApp() {
         }
       }, 850);
     } else {
-      setDrillFeedback("괜찮아. 그림을 천천히 다시 보자.");
+      setDrillFeedback("아쉬워요. 빨간 답 말고 다른 답을 골라 봐요.");
     }
   }
 
@@ -771,6 +823,7 @@ export function MoramiApp() {
     setDrillCorrect(0);
     setDrillAttempts(0);
     setDrillFeedback("");
+    setSelectedDrillAnswer(null);
     setDrillLocked(false);
     setMastered(false);
     setLadder(3);
@@ -906,11 +959,12 @@ export function MoramiApp() {
               <div className="practice-card">
                 <ProblemCard problem={currentDrill} />
                 <div className="answer-grid">
-                  {currentDrill.answers.map((answer) => (
-                    <button key={answer} onClick={() => answerDrill(answer)} disabled={drillLocked}>{answer}</button>
-                  ))}
+                  {currentDrill.answers.map((answer) => {
+                    const result = selectedDrillAnswer === answer ? (answer === currentDrill.correct ? "is-correct" : "is-wrong") : "";
+                    return <button key={answer} className={result} onClick={() => answerDrill(answer)} disabled={drillLocked} aria-pressed={selectedDrillAnswer === answer}>{answer}</button>;
+                  })}
                 </div>
-                <div className={`gentle-feedback ${drillFeedback ? "is-visible" : ""}`}>{drillFeedback || "빈 자리"}</div>
+                <div className={`gentle-feedback ${drillFeedback ? "is-visible" : ""} ${selectedDrillAnswer === currentDrill.correct ? "is-correct" : selectedDrillAnswer ? "is-wrong" : ""}`} role="status" aria-live="polite">{drillFeedback || "빈 자리"}</div>
               </div>
             )}
           </div>
