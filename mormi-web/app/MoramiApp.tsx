@@ -990,19 +990,28 @@ export function MoramiApp() {
           <div className="confetti" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></div>
           <Morami expression="celebrate" />
           <div className="complete-copy">
-            <p className="eyebrow">오늘의 가르치기 완료</p>
-            <h1>모르미가<br /><em>하나 더 알게 됐어!</em></h1>
-            <div className="today-badges"><span><UiIcon name="sprout" size="small" /> {activeSession.title} {masteryTarget}번 연습</span><span><UiIcon name="star" size="small" /> 별노트 1개</span><span><UiIcon name="bag" size="small" /> 생활 미션 {transferTarget}개</span></div>
-            <div className="session-roadmap" aria-label="단계별 학습 코스 목록">
-              {(activeArea?.sessionIds || []).map((id) => sessions.find((session) => session.id === id)).filter((session): session is Session => Boolean(session)).map((session) => <span key={session.id} className={completedSessionIds.includes(session.id) || session.id === activeSession.id ? "is-done" : ""}><i />{session.title}</span>)}
+            <p className="eyebrow">오늘의 수학 여행 완료</p>
+            <h1>모르미와<br /><em>오늘도 해냈어!</em></h1>
+            <div className="today-badges" aria-label="오늘의 학습 결과">
+              <span><UiIcon name="sprout" size="small" /><strong>{masteryTarget}번</strong><small>{activeSession.title} 연습</small></span>
+              <span><UiIcon name="star" size="small" /><strong>1개</strong><small>별노트</small></span>
+              <span><UiIcon name="bag" size="small" /><strong>{transferTarget}개</strong><small>생활 미션</small></span>
+            </div>
+            <div className="complete-path">
+              <p>이 영역에서 배운 길</p>
+              <div className="session-roadmap" aria-label="단계별 학습 코스 목록">
+                {(activeArea?.sessionIds || []).map((id) => sessions.find((session) => session.id === id)).filter((session): session is Session => Boolean(session)).map((session) => <span key={session.id} className={completedSessionIds.includes(session.id) || session.id === activeSession.id ? "is-done" : ""}><i /><b>{session.title}</b></span>)}
+              </div>
             </div>
             {sessionIndex < sessions.length - 1 ? (
               <button className="primary-button" onClick={startNextSession}>다음: {sessions[sessionIndex + 1].title} <span className="button-arrow" /></button>
             ) : (
               <Link className="primary-button" href="/report">어른에게 보여 주기 <span className="button-arrow" /></Link>
             )}
-            <button className="complete-report-link" onClick={showCurriculum}>다른 수학 과정 고르기</button>
-            <Link className="complete-report-link" href="/report">오늘 기록 보기</Link>
+            <div className="complete-secondary-actions">
+              <button className="complete-report-link" onClick={showCurriculum}>다른 과정 고르기</button>
+              <Link className="complete-report-link" href="/report">오늘 기록 보기</Link>
+            </div>
           </div>
         </section>
       )}
