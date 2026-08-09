@@ -332,6 +332,20 @@ function answersMatch(input: string, correct: string) {
   return Boolean(inputNumbers && correctNumbers && inputNumbers === correctNumbers);
 }
 
+function readableChoice(answer: string) {
+  const labels: Record<string, string> = {
+    "●": "● 동그라미",
+    "▲": "▲ 세모",
+    "■": "■ 네모",
+    "◆": "◆ 마름모",
+    "↑": "↑ 위쪽",
+    "↓": "↓ 아래쪽",
+    "←": "← 왼쪽",
+    "→": "→ 오른쪽",
+  };
+  return labels[answer] ?? answer;
+}
+
 type RecognitionResultLike = { results: { 0: { 0: { transcript: string } } } };
 type RecognitionLike = {
   lang: string;
@@ -456,16 +470,23 @@ function StoreOrder({ problem }: { problem: Problem }) {
 function LifeMissionGame({ session, problem, progress, solved, onAnswer, onFinish }: { session: Session; problem: Problem; progress: string; solved: boolean; onAnswer: (answer: string) => void; onFinish: () => void }) {
   const story = missionStory(session, problem);
   const [typedAnswer, setTypedAnswer] = useState("");
-  const [showChoices, setShowChoices] = useState(false);
+  const [showTyping, setShowTyping] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [answerFeedback, setAnswerFeedback] = useState<"correct" | "wrong" | null>(null);
-  useEffect(() => { setTypedAnswer(""); setShowChoices(false); setSelectedAnswer(null); setAnswerFeedback(null); }, [problem.prompt, progress]);
+  const [answerLocked, setAnswerLocked] = useState(false);
+  useEffect(() => { setTypedAnswer(""); setShowTyping(false); setSelectedAnswer(null); setAnswerFeedback(null); setAnswerLocked(false); }, [problem.prompt, progress]);
 
   function submitMissionAnswer(answer: string, fromChoice = false) {
+    if (answerLocked) return;
     const isCorrect = answersMatch(answer, problem.correct);
     setSelectedAnswer(fromChoice ? answer : null);
     setAnswerFeedback(isCorrect ? "correct" : "wrong");
-    onAnswer(answer);
+    if (isCorrect) {
+      setAnswerLocked(true);
+      window.setTimeout(() => onAnswer(answer), 900);
+    } else {
+      onAnswer(answer);
+    }
   }
 
   return (
@@ -477,19 +498,19 @@ function LifeMissionGame({ session, problem, progress, solved, onAnswer, onFinis
         {problem.visual.type === "money" ? <StoreOrder problem={problem} /> : <div className={`mission-prop mission-prop--${story.scene}`}><ProblemCard problem={problem} /></div>}
       </div>
       {!solved ? <div className="mission-controls">
-        <p>{story.action} · 먼저 직접 써 봐요</p>
-        <form className="mission-write" onSubmit={(event) => { event.preventDefault(); if (typedAnswer.trim()) submitMissionAnswer(typedAnswer); }}>
-          <input value={typedAnswer} onChange={(event) => setTypedAnswer(event.target.value)} placeholder="답을 직접 입력해요" aria-label="생활 미션 답 직접 입력" autoComplete="off" />
-          <button type="submit" disabled={!typedAnswer.trim()}>확인</button>
-        </form>
-        <button type="button" className="choice-toggle" onClick={() => setShowChoices((value) => !value)}>{showChoices ? "보기 닫기" : "잘 모르겠어요 · 보기 열기"}</button>
-        {showChoices && <div className="mission-choice-list">{problem.answers.map((answer) => {
+        <p>{story.action} · 답을 하나 골라 봐요</p>
+        <div className="mission-choice-list">{problem.answers.map((answer) => {
           const result = selectedAnswer === answer ? (answersMatch(answer, problem.correct) ? "is-correct" : "is-wrong") : "";
-          return <button key={answer} className={result} onClick={() => submitMissionAnswer(answer, true)} aria-pressed={selectedAnswer === answer}>{answer}</button>;
-        })}</div>}
+          return <button key={answer} className={result} onClick={() => submitMissionAnswer(answer, true)} aria-pressed={selectedAnswer === answer} disabled={answerLocked}>{readableChoice(answer)}</button>;
+        })}</div>
         <div className={`mission-answer-feedback ${answerFeedback ? `is-${answerFeedback}` : ""}`} role="status" aria-live="polite">
           {answerFeedback === "correct" ? "정답이에요! 생활 속에서도 잘 해냈어요." : answerFeedback === "wrong" ? "아쉬워요. 빨간 답 말고 다시 생각해 봐요." : "답을 고르면 바로 알려 줄게요."}
         </div>
+        <button type="button" className="direct-answer-toggle" onClick={() => setShowTyping((value) => !value)}>{showTyping ? "직접 쓰기 닫기" : "⌨ 직접 써서 답하기"}</button>
+        {showTyping && <form className="mission-write" onSubmit={(event) => { event.preventDefault(); if (typedAnswer.trim()) submitMissionAnswer(typedAnswer); }}>
+          <input value={typedAnswer} onChange={(event) => setTypedAnswer(event.target.value)} placeholder="답을 직접 입력해요" aria-label="생활 미션 답 직접 입력" autoComplete="off" />
+          <button type="submit" disabled={!typedAnswer.trim() || answerLocked}>확인</button>
+        </form>}
       </div>
         : <button className="mission-finish" onClick={onFinish}>오늘 여행 마치기 <span className="button-arrow" /></button>}
     </div>

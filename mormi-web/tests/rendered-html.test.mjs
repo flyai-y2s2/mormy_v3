@@ -88,6 +88,9 @@ test("keeps four official areas and 36 playable sessions in the curriculum", asy
   assert.doesNotMatch(app, /<i \/>\{mark\}<\/span>/);
   assert.match(app, /extraLifeProblem/);
   assert.match(app, /답을 직접 입력해요/);
+  assert.match(app, /답을 하나 골라 봐요/);
+  assert.match(app, /● 동그라미/);
+  assert.doesNotMatch(app, /잘 모르겠어요 · 보기 열기/);
   assert.match(app, /말로 알려주기/);
   assert.match(app, /SpeechRecognition/);
   assert.doesNotMatch(css, /\.report-link \{ display:none; \}/);
