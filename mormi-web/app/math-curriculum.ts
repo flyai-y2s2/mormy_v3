@@ -83,7 +83,7 @@ const addedSessions: Session[] = [
       p("점은 모두 몇 개일까?", ["10", "9", "11"], "10", { type: "ten-frame", count: 10 }),
       p("점은 모두 몇 개일까?", ["8", "7", "9"], "8", { type: "ten-frame", count: 8 }),
     ],
-    transfer: [p("접시에 딸기가 몇 개 있을까?", ["6개", "5개", "7개"], "6개", { type: "ten-frame", count: 6 }), p("필요한 컵은 모두 몇 개일까?", ["9개", "8개", "10개"], "9개", { type: "ten-frame", count: 9 })],
+    transfer: [p("접시에 딸기가 몇 개 있을까?", ["6개", "5개", "7개"], "6개", { type: "ten-frame", count: 6, item: "strawberry" }), p("필요한 컵은 모두 몇 개일까?", ["9개", "8개", "10개"], "9개", { type: "ten-frame", count: 9, item: "cup" })],
   }),
   lesson({
     id: "number-compare", subject: "number", unit: "수 감각", title: "수의 크기를 비교해요", level: 2,

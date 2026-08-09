@@ -19,6 +19,13 @@ const expressions: Record<Expression, string> = {
 };
 
 const stageLabels = ["혼자 연습", "가르치기", "별노트", "생활 게임"];
+const childName = "지우";
+
+type TeachMessage = {
+  id: number;
+  role: "morami" | "child";
+  text: string;
+};
 
 const areaImages: Record<string, string> = {
   "number-operations": "/math-areas/add-subtract.webp",
@@ -138,8 +145,22 @@ function MoneyVisual({ amounts, paid, labels = [] }: { amounts: number[]; paid?:
   );
 }
 
-function TenFrame({ count }: { count: number }) {
-  return <div className="ten-frame" aria-label={`${count}개`}>{Array.from({ length: 10 }, (_, index) => <i key={index} className={index < count ? "is-filled" : ""} />)}</div>;
+const tenFrameItems = {
+  strawberry: "🍓",
+  cup: "🥤",
+  apple: "🍎",
+} as const;
+
+function TenFrame({ count, item = "dot" }: { count: number; item?: "dot" | "strawberry" | "cup" | "apple" }) {
+  return (
+    <div className={`ten-frame ten-frame--${item}`} aria-label={`${count}개`}>
+      {Array.from({ length: 10 }, (_, index) => (
+        <i key={index} className={index < count ? "is-filled" : ""}>
+          {index < count && item !== "dot" ? <span aria-hidden="true">{tenFrameItems[item]}</span> : null}
+        </i>
+      ))}
+    </div>
+  );
 }
 
 function GroupsVisual({ groups, each, mode }: { groups: number; each: number; mode: "multiply" | "share" }) {
@@ -176,7 +197,7 @@ function CalendarVisual({ month, highlight, note }: { month: number; highlight: 
 function LearningVisual({ visual, small = false }: { visual: Visual; small?: boolean }) {
   if (visual.type === "clock") return <Clock hour={visual.hour} minute={visual.minute} small={small} />;
   if (visual.type === "money") return <MoneyVisual amounts={visual.amounts} paid={visual.paid} labels={visual.labels} />;
-  if (visual.type === "ten-frame") return <div className="ten-frame-pair"><TenFrame count={visual.count} />{typeof visual.secondCount === "number" && <TenFrame count={visual.secondCount} />}</div>;
+  if (visual.type === "ten-frame") return <div className="ten-frame-pair"><TenFrame count={visual.count} item={visual.item} />{typeof visual.secondCount === "number" && <TenFrame count={visual.secondCount} item={visual.item} />}</div>;
   if (visual.type === "groups") return <GroupsVisual groups={visual.groups} each={visual.each} mode={visual.mode} />;
   if (visual.type === "number-line") return <NumberLineVisual start={visual.start} end={visual.end} marks={visual.marks} missing={visual.missing} />;
   if (visual.type === "measurement") return <MeasurementVisual kind={visual.kind} left={visual.left} right={visual.right} unit={visual.unit} />;
@@ -266,7 +287,7 @@ function varyProblem(problem: Problem, seed: number): Problem {
       const secondCount = relation === "오른쪽" ? high : relation === "왼쪽" ? low : count;
       return { ...problem, visual: { ...problem.visual, count, secondCount } };
     }
-    const count = ((problem.visual.count + step - 1) % 6) + 4;
+    const count = (Math.abs(seed) % 10) + 1;
     const suffix = problem.correct.replace(/[\d,\s-]/g, "");
     if (problem.prompt.includes("10")) {
       const result = 10 - count;
@@ -298,6 +319,116 @@ function varyProblem(problem: Problem, seed: number): Problem {
     const nextHour = hour === 12 ? 1 : hour + 1;
     return { ...problem, correct, answers: rotateAnswers([correct, minute === 0 ? `${hour}시 30분` : `${hour}시`, minute === 0 ? `${nextHour}시` : `${nextHour}시 ${minute}분`], seed), visual: { ...problem.visual, hour } };
   }
+  if (problem.visual.type === "groups" && !problem.correct.includes("원")) {
+    const groups = Math.max(2, Math.min(8, problem.visual.groups + (step % 2)));
+    const each = Math.max(2, Math.min(10, problem.visual.each + (step % 3 === 0 ? 1 : 0)));
+    const total = groups * each;
+    const suffix = problem.correct.match(/^\d[\d,]*(.*)$/)?.[1] ?? "";
+    if (problem.prompt.includes("덧셈으로") || problem.correct.includes("+")) {
+      const correct = Array.from({ length: groups }, () => String(each)).join("+");
+      return { ...problem, prompt: `${each}개씩 ${groups}묶음을 덧셈으로 나타내면?`, correct, answers: [correct, `${each}+${groups}`, Array.from({ length: each }, () => String(groups)).join("+")], visual: { ...problem.visual, groups, each } };
+    }
+    if (problem.prompt.includes("몇 묶음") || suffix.includes("묶음")) {
+      const correct = `${groups}묶음`;
+      return { ...problem, prompt: `${total}개를 ${each}개씩 묶으면 몇 묶음?`, correct, answers: [correct, `${each}묶음`, `${groups + 1}묶음`], visual: { ...problem.visual, groups, each } };
+    }
+    if (problem.visual.mode === "share") {
+      const unit = suffix || "개";
+      const correct = `${each}${unit}`;
+      return { ...problem, prompt: `${total}개를 ${groups}명에게 똑같이 나누면 한 명당?`, correct, answers: [correct, `${Math.max(1, each - 1)}${unit}`, `${each + 1}${unit}`], visual: { ...problem.visual, groups, each } };
+    }
+    const correct = `${total}${suffix}`;
+    const prompt = problem.prompt.includes("×") ? `${each}×${groups}은?` : `${each}개씩 ${groups}묶음은 모두 몇 개일까?`;
+    return { ...problem, prompt, correct, answers: [correct, `${Math.max(0, total - each)}${suffix}`, `${total + each}${suffix}`], visual: { ...problem.visual, groups, each } };
+  }
+  if (problem.visual.type === "number-line") {
+    const sequence = problem.prompt.match(/^([\d, ]+) 다음 수는\?$/);
+    if (sequence) {
+      const values = sequence[1].split(",").map((value) => Number(value.trim()));
+      const shifted = values.map((value) => value + step);
+      const interval = values.length > 1 ? values[1] - values[0] : step;
+      const result = shifted.at(-1)! + interval;
+      const marks = [...shifted, result].toSorted((a, b) => a - b);
+      return { ...problem, prompt: `${shifted.join(", ")} 다음 수는?`, correct: String(result), answers: [String(result), String(result + Math.abs(interval)), String(result - Math.abs(interval))], visual: { ...problem.visual, start: marks[0], end: marks.at(-1)!, marks, missing: result } };
+    }
+    if (typeof problem.visual.missing === "number" && (problem.prompt.includes("십의 자리") || problem.prompt.includes("일의 자리") || problem.prompt.includes("낱개") || problem.prompt.includes("십 "))) {
+      const tens = 2 + ((Math.floor(problem.visual.missing / 10) + step) % 7);
+      const ones = 1 + ((problem.visual.missing + step) % 8);
+      const value = tens * 10 + ones;
+      const asksTens = problem.prompt.includes("십의 자리");
+      const asksOnes = problem.prompt.includes("일의 자리") || problem.prompt.includes("낱개");
+      const correct = asksTens ? String(tens) : asksOnes ? (problem.correct.includes("개") ? `${ones}개` : String(ones)) : String(value);
+      const prompt = asksTens ? `${value}에서 십의 자리 수는?` : asksOnes ? `${value}에서 ${problem.prompt.includes("낱개") ? "낱개는 몇 개일까" : "일의 자리 수는"}?` : `${tens}십 ${ones}는 어떤 수일까?`;
+      const end = Math.ceil(value / 10) * 10;
+      const marks = Array.from({ length: Math.floor(end / 10) + 1 }, (_, index) => index * 10).concat(value).toSorted((a, b) => a - b);
+      return { ...problem, prompt, correct, answers: [correct, asksTens ? String(ones) : String(tens), String(value)], visual: { ...problem.visual, start: 0, end, marks, missing: value } };
+    }
+  }
+  if (problem.visual.type === "measurement") {
+    if (typeof problem.visual.right === "number" && ["왼쪽", "오른쪽", "같아"].includes(problem.correct)) {
+      const delta = problem.visual.unit === "g" || problem.visual.unit === "mL" ? step * 50 : step;
+      return { ...problem, visual: { ...problem.visual, left: problem.visual.left + delta, right: problem.visual.right + delta } };
+    }
+    if (typeof problem.visual.right !== "number") {
+      const previous = problem.visual.left;
+      const next = previous + step;
+      const correct = problem.correct.replace(String(previous), String(next));
+      const prompt = problem.prompt.replaceAll(String(previous), String(next));
+      return { ...problem, prompt, correct, answers: problem.answers.map((answer) => answer.replace(String(previous), String(next))), visual: { ...problem.visual, left: next } };
+    }
+  }
+  if (problem.visual.type === "shapes") {
+    const offset = step % problem.visual.shapes.length;
+    const shapes = [...problem.visual.shapes.slice(offset), ...problem.visual.shapes.slice(0, offset)];
+    let correct = problem.correct;
+    const target = problem.prompt.includes("삼각형") ? "triangle" : problem.prompt.includes("원은") ? "circle" : null;
+    if (target && ["첫째", "둘째", "셋째"].includes(correct)) correct = ["첫째", "둘째", "셋째"][shapes.indexOf(target)];
+    return { ...problem, correct, visual: { ...problem.visual, shapes } };
+  }
+  if (problem.visual.type === "pattern") {
+    const items = [...problem.visual.items];
+    if (problem.visual.missingIndex === -1) {
+      const offset = step % items.length;
+      const shiftedItems = [...items.slice(offset), ...items.slice(0, offset)];
+      let correct = problem.correct;
+      if (["왼쪽", "오른쪽"].includes(correct) && problem.prompt.includes("어느 쪽")) correct = correct === "왼쪽" ? "오른쪽" : "왼쪽";
+      return { ...problem, correct, visual: { ...problem.visual, items: shiftedItems } };
+    }
+    const symbolMaps: Array<Record<string, string>> = [
+      { "●": "◆", "▲": "■", "■": "●", "◆": "▲" },
+      { "큰 원": "큰 별", "작은 원": "작은 별", "세모": "네모" },
+    ];
+    const symbolMap = symbolMaps.find((candidate) => candidate[problem.correct]);
+    if (symbolMap) {
+      const missingIndex = problem.visual.missingIndex;
+      const mappedItems = items.map((item) => symbolMap[item] ?? item);
+      const correct = symbolMap[problem.correct];
+      const visiblePattern = mappedItems.filter((_, index) => index !== missingIndex).join(" ");
+      return { ...problem, prompt: `${visiblePattern} 다음은?`, correct, answers: problem.answers.map((answer) => symbolMap[answer] ?? answer), visual: { ...problem.visual, items: mappedItems } };
+    }
+  }
+  if (problem.visual.type === "chart") {
+    const values = problem.visual.values.map((value) => value + step);
+    if (problem.prompt.includes("전체")) {
+      const result = values.reduce((sum, value) => sum + value, 0);
+      const unit = problem.correct.replace(/[\d,]/g, "");
+      const correct = `${result}${unit}`;
+      return { ...problem, correct, answers: [correct, `${Math.max(0, result - step)}${unit}`, `${result + step}${unit}`], visual: { ...problem.visual, values } };
+    }
+    if (values.length === 1 && problem.correct.match(/\d/)) {
+      const unit = problem.correct.replace(/[\d,]/g, "");
+      const correct = `${values[0]}${unit}`;
+      return { ...problem, correct, answers: [correct, `${Math.max(0, values[0] - 1)}${unit}`, `${values[0] + 1}${unit}`], visual: { ...problem.visual, values } };
+    }
+    return { ...problem, visual: { ...problem.visual, values } };
+  }
+  if (problem.visual.type === "calendar") {
+    const originalMonth = problem.visual.month;
+    const safeMonths = [1, 3, 5, 7, 8, 10, 12];
+    const month = safeMonths[(safeMonths.indexOf(originalMonth) + step + safeMonths.length) % safeMonths.length] ?? safeMonths[step % safeMonths.length];
+    const replaceMonth = (value: string) => value.replaceAll(`${originalMonth}월`, `${month}월`);
+    return { ...problem, prompt: replaceMonth(problem.prompt), correct: replaceMonth(problem.correct), answers: problem.answers.map(replaceMonth), visual: { ...problem.visual, month } };
+  }
   return problem;
 }
 
@@ -311,7 +442,7 @@ function shuffleProblemAnswers(problem: Problem, seed: number): Problem {
 
 function extraLifeProblem(session: Session, seed: number): Problem {
   const n = Math.abs(seed % 4) + 2;
-  if (session.subject === "number") return { prompt: "과일 바구니에 담긴 사과는 모두 몇 개일까?", answers: [String(n + 3), String(n + 2), String(n + 4)], correct: String(n + 3), visual: { type: "ten-frame", count: n + 3 } };
+  if (session.subject === "number") return { prompt: "과일 바구니에 담긴 사과는 모두 몇 개일까?", answers: [String(n + 3), String(n + 2), String(n + 4)], correct: String(n + 3), visual: { type: "ten-frame", count: n + 3, item: "apple" } };
   if (session.subject === "addition") return { prompt: `오전에 ${n}개, 오후에 ${n + 2}개를 진열했어. 모두 몇 개일까?`, answers: [String(n * 2 + 2), String(n * 2 + 1), String(n * 2 + 3)], correct: String(n * 2 + 2), visual: { type: "objects", left: n, right: n + 2, operation: "+" } };
   if (session.subject === "subtraction") return { prompt: `빵 ${n + 6}개 중 ${n}개가 팔렸어. 몇 개 남았을까?`, answers: ["6", "5", "7"], correct: "6", visual: { type: "objects", left: n + 6, right: n, operation: "-" } };
   if (session.subject === "multiplication") return { prompt: `${n}개씩 든 상자가 3개야. 상품은 모두 몇 개일까?`, answers: [`${n * 3}개`, `${n + 3}개`, `${n * 2}개`], correct: `${n * 3}개`, visual: { type: "groups", groups: 3, each: n, mode: "multiply" } };
@@ -355,6 +486,18 @@ function readableChoice(answer: string) {
     "→": "→ 오른쪽",
   };
   return labels[answer] ?? answer;
+}
+
+const genericTeachWords = new Set(["거야", "해야", "답을", "수를", "말해", "찾아", "세어", "먼저", "같은"]);
+
+function teachResponseMatches(response: string, session: Session) {
+  const clean = (value: string) => value.replace(/[\s,._!?]/g, "").toLowerCase();
+  const normalized = clean(response);
+  if (!normalized) return false;
+  if ([session.fillCorrect, session.oneWordCorrect].some((word) => clean(word) === normalized)) return true;
+  const concepts = Array.from(new Set([session.fillCorrect, session.oneWordCorrect, ...session.targetSentence]))
+    .filter((word) => clean(word).length >= 2 && !genericTeachWords.has(word));
+  return concepts.filter((word) => normalized.includes(clean(word))).length >= 2;
 }
 
 type RecognitionResultLike = { results: { 0: { 0: { transcript: string } } } };
@@ -485,7 +628,6 @@ function LifeMissionGame({ session, problem, progress, solved, expression, dialo
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [answerFeedback, setAnswerFeedback] = useState<"correct" | "wrong" | null>(null);
   const [answerLocked, setAnswerLocked] = useState(false);
-  useEffect(() => { setTypedAnswer(""); setShowChoices(false); setSelectedAnswer(null); setAnswerFeedback(null); setAnswerLocked(false); }, [problem.prompt, progress]);
 
   function submitMissionAnswer(answer: string, fromChoice = false) {
     if (answerLocked) return;
@@ -512,11 +654,11 @@ function LifeMissionGame({ session, problem, progress, solved, expression, dialo
       {!solved ? <div className="mission-controls">
         <div className="mission-morami">
           <Morami expression={answerFeedback === "correct" ? "happy" : answerFeedback === "wrong" ? "confused" : expression} size="small" />
-          <div><b>{showChoices ? "보기에서 한 번만 더 알려 줄래?" : "네 생각을 먼저 써서 알려 줘!"}</b><span>{answerFeedback ? (answerFeedback === "correct" ? "아, 이제 알겠어! 네가 알려 줘서 이해했어." : dialogue) : dialogue}</span></div>
+          <div><b>{showChoices ? "보기에서 한 번만 더 알려 줄래?" : `${childName}의 생각을 먼저 써서 알려 줘!`}</b><span>{answerFeedback ? (answerFeedback === "correct" ? `아, 이제 알겠어! ${childName}가 알려 줘서 이해했어.` : dialogue) : dialogue}</span></div>
         </div>
         <p>{showChoices ? `${story.action} · 보기에서 골라 모르미에게 알려 줘요` : `${story.action} · 먼저 직접 써서 모르미에게 알려 줘요`}</p>
         {!showChoices ? <form className="mission-write" onSubmit={(event) => { event.preventDefault(); if (typedAnswer.trim()) submitMissionAnswer(typedAnswer); }}>
-          <input value={typedAnswer} onChange={(event) => setTypedAnswer(event.target.value)} placeholder="내 생각을 먼저 써 봐요" aria-label="모르미에게 알려 줄 생활 미션 답" autoComplete="off" autoFocus />
+          <input value={typedAnswer} onChange={(event) => setTypedAnswer(event.target.value)} placeholder="내 생각을 먼저 써 봐요" aria-label="모르미에게 알려 줄 생활 미션 답" autoComplete="off" />
           <button type="submit" disabled={!typedAnswer.trim() || answerLocked}>알려주기</button>
         </form> : <>
           <div className="mission-choice-list">{problem.answers.map((answer) => {
@@ -526,7 +668,7 @@ function LifeMissionGame({ session, problem, progress, solved, expression, dialo
           <button type="button" className="mission-rewrite" onClick={() => { setShowChoices(false); setSelectedAnswer(null); setAnswerFeedback(null); }}>내 답 다시 써 보기</button>
         </>}
         <div className={`mission-answer-feedback ${answerFeedback ? `is-${answerFeedback}` : ""}`} role="status" aria-live="polite">
-          {answerFeedback === "correct" ? "모르미가 이해했어요! 네 설명이 맞아요." : answerFeedback === "wrong" ? (showChoices ? "괜찮아요. 그림을 보고 보기에서 한 번 더 알려 줘요." : "괜찮아요. 그림을 보고 한 번 더 써 봐요.") : "모르미가 네 설명을 기다리고 있어요."}
+          {answerFeedback === "correct" ? `모르미가 이해했어요! ${childName}의 설명이 맞아요.` : answerFeedback === "wrong" ? (showChoices ? "괜찮아요. 그림을 보고 보기에서 한 번 더 알려 줘요." : "괜찮아요. 그림을 보고 한 번 더 써 봐요.") : `모르미가 ${childName}의 설명을 기다리고 있어요.`}
         </div>
       </div>
         : <button className="mission-finish" onClick={onFinish}>오늘 여행 마치기 <span className="button-arrow" /></button>}
@@ -538,7 +680,7 @@ function Morami({ expression, size = "large" }: { expression: Expression; size?:
   return (
     <div className={`morami-frame morami-frame--${size} morami-frame--${expression} ${expression === "happy" || expression === "celebrate" ? "is-bouncing" : ""}`}>
       <div className="morami-cutout">
-        <Image key={expression} src={expressions[expression]} alt={`모르미 ${expression} 표정`} width={1254} height={1254} unoptimized priority={size === "large"} />
+        <Image key={expression} src={expressions[expression]} alt={`모르미 ${expression} 표정`} width={1254} height={1254} unoptimized priority={size === "large" || expression === "bright"} />
       </div>
       <span className="morami-shadow" />
     </div>
@@ -592,8 +734,10 @@ export function MoramiApp() {
       oneWordOptions: shuffleWords(base.oneWordOptions, variantSeed + sessionIndex * 47),
       pointOptions: shuffleWords(base.pointOptions, variantSeed + sessionIndex * 53),
       sentenceWords: shuffleWords(base.sentenceWords, variantSeed + sessionIndex * 41),
-      drills: base.drills.map((problem, index) => {
-        const seed = variantSeed + index * 11;
+      drills: Array.from({ length: masteryTarget }, (_, index) => {
+        const problem = base.drills[index % base.drills.length];
+        const cycle = Math.floor(index / base.drills.length);
+        const seed = variantSeed + index * 11 + cycle * 130;
         return shuffleProblemAnswers(varyProblem(problem, seed), seed);
       }),
     };
@@ -615,6 +759,8 @@ export function MoramiApp() {
   const [selectedWords, setSelectedWords] = useState<Array<{ id: string; word: string }>>([]);
   const [teachText, setTeachText] = useState("");
   const [speechStatus, setSpeechStatus] = useState("");
+  const [showTeachHelp, setShowTeachHelp] = useState(false);
+  const [teachMessages, setTeachMessages] = useState<TeachMessage[]>([{ id: 1, role: "morami", text: sessions[0].teachPrompt }]);
   const [teachSolved, setTeachSolved] = useState(false);
   const [solvedAtLevel, setSolvedAtLevel] = useState<number | null>(null);
   const [floorFails, setFloorFails] = useState(0);
@@ -626,6 +772,7 @@ export function MoramiApp() {
   const [completedSessionIds, setCompletedSessionIds] = useState<string[]>([]);
   const startedAt = useRef(Date.now());
   const elapsedSeconds = useRef(0);
+  const teachMessageId = useRef(2);
 
   const currentStep = stage === "curriculum" ? -1 : stage === "drill" ? 0 : stage === "teach" ? 1 : stage === "wrap" ? 2 : 3;
   const currentDrill = activeSession.drills[drillIndex % activeSession.drills.length];
@@ -654,6 +801,12 @@ export function MoramiApp() {
       setExpression(turn.expression);
     }
   }, [activeSession, ladder]);
+
+  const appendTeachMessage = useCallback((role: TeachMessage["role"], text: string) => {
+    const nextMessage = { id: teachMessageId.current, role, text };
+    teachMessageId.current += 1;
+    setTeachMessages((messages) => [...messages, nextMessage]);
+  }, []);
 
   useEffect(() => {
     try {
@@ -728,12 +881,19 @@ export function MoramiApp() {
 
   function beginTeaching() {
     setStage("teach");
-    void askMorami("teach_prompt", activeSession.teachPrompt, "confused");
+    setExpression("confused");
+    setDialogue(activeSession.teachPrompt);
+    setShowTeachHelp(false);
+    setTeachText("");
+    setSpeechStatus("");
+    teachMessageId.current = 2;
+    setTeachMessages([{ id: 1, role: "morami", text: activeSession.teachPrompt }]);
   }
 
   function lowerLadder(message: string) {
     setExpression("confused");
     setDialogue(message);
+    appendTeachMessage("morami", message);
     setSelectedWords([]);
     if (ladder > 0) setLadder((level) => level - 1);
   }
@@ -741,6 +901,7 @@ export function MoramiApp() {
   function solveTeaching(level: number) {
     setTeachSolved(true);
     setSolvedAtLevel(level);
+    appendTeachMessage("morami", `아, 그렇구나! ${childName}가 알려 준 방법으로 이제 이해했어.`);
     if (soundOn) playLearningChime();
     void askMorami("teach_correct", `아, 그렇구나! ${activeSession.learnedLine}`, "happy", level);
   }
@@ -753,15 +914,26 @@ export function MoramiApp() {
   function submitTeachText() {
     const response = teachText.trim();
     if (!response) return;
-    const importantWords = [activeSession.fillCorrect, activeSession.oneWordCorrect, ...activeSession.targetSentence.filter((word) => word.length >= 2)];
-    const matches = importantWords.filter((word) => response.includes(word)).length;
-    if (matches >= 2 || response.includes(activeSession.fillCorrect)) {
+    appendTeachMessage("child", response);
+    setTeachText("");
+    if (teachResponseMatches(response, activeSession)) {
       solveTeaching(3);
-      setSpeechStatus("모르미가 내 설명을 들었어요!");
+      setSpeechStatus(`모르미가 ${childName}의 설명을 이해했어요!`);
     } else {
-      setSpeechStatus("중요한 말을 한 번 더 넣어 볼까요?");
-      lowerLadder("설명해 줘서 고마워! 중요한 방법을 한마디 더 넣어 줄래?");
+      const retry = `아직 잘 모르겠어. 처음 질문을 다시 볼게. ${activeSession.teachPrompt}`;
+      setExpression("confused");
+      setDialogue(retry);
+      setSpeechStatus("질문을 다시 보고 한 번 더 말해 볼까요?");
+      appendTeachMessage("morami", retry);
     }
+  }
+
+  function openTeachHelp() {
+    setShowTeachHelp(true);
+    const helpMessage = "괜찮아. 도움 낱말을 차례로 놓으면서 같이 알려 줘.";
+    setDialogue(helpMessage);
+    setExpression("calm");
+    appendTeachMessage("morami", helpMessage);
   }
 
   function startSpeechInput() {
@@ -868,6 +1040,9 @@ export function MoramiApp() {
     setSelectedWords([]);
     setTeachText("");
     setSpeechStatus("");
+    setShowTeachHelp(false);
+    teachMessageId.current = 2;
+    setTeachMessages([{ id: 1, role: "morami", text: sessions[nextIndex].teachPrompt }]);
     setTeachSolved(false);
     setSolvedAtLevel(null);
     setFloorFails(0);
@@ -926,11 +1101,11 @@ export function MoramiApp() {
               </div>
               <div className="area-picker-heading"><p className="eyebrow">교육과정 4개 영역</p><h2>무엇을 공부할까요?</h2></div>
               <div className="math-area-grid">
-                {mathAreas.map((area) => {
+                {mathAreas.map((area, areaIndex) => {
                   const done = area.sessionIds.filter((id) => completedSessionIds.includes(id)).length;
                   return (
                     <button className="math-area-card" key={area.id} style={{ "--area-color": area.color } as React.CSSProperties} onClick={() => showArea(area.id)}>
-                      <div className="math-area-visual"><Image src={areaImages[area.id]} alt={`${area.title} 대단원을 나타내는 학습 그림`} width={640} height={640} unoptimized /><span>1~6학년</span></div>
+                      <div className="math-area-visual"><Image src={areaImages[area.id]} alt={`${area.title} 대단원을 나타내는 학습 그림`} width={640} height={640} unoptimized priority={areaIndex === 0} /><span>1~6학년</span></div>
                       <div className="math-area-heading"><p>{area.title}</p><small>{area.description}</small></div>
                       <div className="math-area-footer"><span>{done ? `학습 진행 · ${done}개 완료` : "3개 학년군 정규 범위"}</span><em>교육과정 보기 <b>›</b></em></div>
                     </button>
@@ -989,7 +1164,7 @@ export function MoramiApp() {
               <div className="mastery-card">
                 <div className="mastery-stars"><UiIcon name="star" size="large" /><UiIcon name="star" size="large" /><UiIcon name="star" size="large" /></div>
                 <h2>10번 연습 끝!</h2>
-                <p>이제 모르미가 처음 찾아올 거야.<br />방금 익힌 걸 네가 가르쳐 줘.</p>
+                <p>이제 모르미가 처음 찾아올 거야.<br />방금 익힌 걸 {childName}가 가르쳐 줘.</p>
                 <button className="primary-button" onClick={beginTeaching}>모르미 가르치기 <span className="button-arrow" /></button>
                 <button className="dictionary-link" onClick={() => setDictionaryOpen(true)}><UiIcon name="book" size="small" /> 먼저 사전 보기</button>
               </div>
@@ -1002,7 +1177,7 @@ export function MoramiApp() {
                     return <button key={answer} className={result} onClick={() => answerDrill(answer)} disabled={drillLocked} aria-pressed={selectedDrillAnswer === answer}>{answer}</button>;
                   })}
                 </div>
-                <div className={`gentle-feedback ${drillFeedback ? "is-visible" : ""} ${selectedDrillAnswer === currentDrill.correct ? "is-correct" : selectedDrillAnswer ? "is-wrong" : ""}`} role="status" aria-live="polite">{drillFeedback || "빈 자리"}</div>
+                <div className={`gentle-feedback ${drillFeedback ? "is-visible" : ""} ${selectedDrillAnswer === currentDrill.correct ? "is-correct" : selectedDrillAnswer ? "is-wrong" : ""}`} role="status" aria-live="polite">{drillFeedback}</div>
               </div>
             )}
           </div>
@@ -1018,54 +1193,67 @@ export function MoramiApp() {
           <div className="chat-window">
             <div className="morami-chat-row">
               <Morami expression={expression} size="small" />
-              <SpeechBubble><p>{dialogue}</p></SpeechBubble>
+              <div className="teach-chat-thread" role="log" aria-label="모르미와 지우의 대화" aria-live="polite">
+                {teachMessages.map((message) => (
+                  <div className={`teach-message teach-message--${message.role}`} key={message.id}>
+                    <b>{message.role === "morami" ? "모르미" : childName}</b>
+                    <p>{message.text}</p>
+                  </div>
+                ))}
+              </div>
             </div>
             {!teachSolved && !brightCarry && (
               <div className="ladder-card">
-                <div className="ladder-topline"><span>말하기 도움</span><div>{[0,1,2,3].map((n) => <i key={n} className={n <= ladder ? "on" : ""} />)}</div></div>
                 <div className="teach-free-response">
                   <p><strong>내 말로 모르미에게 설명하기</strong><span>말하거나 직접 써도 돼요</span></p>
                   <textarea value={teachText} onChange={(event) => setTeachText(event.target.value)} placeholder="예: 더하기는 두 무리를 합치는 거야" rows={2} />
                   <div><button type="button" className="speech-button" onClick={startSpeechInput}>● 말로 알려주기</button><button type="button" className="send-teach-button" disabled={!teachText.trim()} onClick={submitTeachText}>모르미에게 보내기</button></div>
                   {speechStatus && <small>{speechStatus}</small>}
                 </div>
-                <div className="help-divider"><span>또는 도움 낱말로 알려주기</span></div>
-                {ladder === 3 && (
-                  <>
-                    <p className="kid-prompt">낱말을 차례로 톡톡!</p>
-                    <div className="sentence-tray">
-                      {selectedWords.length ? selectedWords.map((token) => <button key={token.id} onClick={() => setSelectedWords((words) => words.filter((word) => word.id !== token.id))}>{token.word}</button>) : <span>여기에 문장을 만들어요</span>}
-                    </div>
-                    <div className="word-bank">
-                      {sentenceBank.map((token) => <button key={token.id} disabled={selectedWords.some((word) => word.id === token.id)} onClick={() => setSelectedWords((words) => [...words, token])}>{token.word}</button>)}
-                    </div>
-                    <button className="check-button" disabled={selectedWords.length !== activeSession.targetSentence.length} onClick={checkSentence}>이렇게 알려 줄래!</button>
-                  </>
-                )}
-                {ladder === 2 && (
-                  <>
-                    <p className="kid-prompt">빈칸에 들어갈 말은?</p>
-                    <div className="fill-sentence">{activeSession.fillBefore} <b>?</b> {activeSession.fillAfter}</div>
-                    <div className="choice-row">{activeSession.fillOptions.map((word) => <button key={word} onClick={() => answerLadder(word, activeSession.fillCorrect)}>{word}</button>)}</div>
-                    <p className="disguise-hint"><UiIcon name="bulb" size="small" /> {activeSession.hint}</p>
-                  </>
-                )}
-                {ladder === 1 && (
-                  <>
-                    <p className="kid-prompt">{activeSession.oneWordPrompt}</p>
-                    <div className="choice-row">{activeSession.oneWordOptions.map((word) => <button key={word} onClick={() => answerLadder(word, activeSession.oneWordCorrect)}>{word}</button>)}</div>
-                  </>
-                )}
-                {ladder === 0 && (
-                  <>
-                    <p className="kid-prompt">{activeSession.pointPrompt}</p>
-                    {activeSession.pointClockMarker ? (
-                      <PointingClock marker={activeSession.pointClockMarker} onPick={(number) => answerLadder(String(number), activeSession.pointCorrect)} />
-                    ) : (
-                      <div className="point-choice-grid">{activeSession.pointOptions.map((answer) => <button key={answer} onClick={() => answerLadder(answer, activeSession.pointCorrect)}>{answer}</button>)}</div>
+                {!showTeachHelp ? (
+                  <button type="button" className="teach-help-button" onClick={openTeachHelp}>잘 모르겠어 · 도움 낱말 보기</button>
+                ) : (
+                  <div className="teach-help-panel">
+                    <div className="help-divider"><span>도움 낱말로 알려주기</span></div>
+                    <div className="ladder-topline"><span>천천히 한 단계씩</span><div>{[0,1,2,3].map((n) => <i key={n} className={n <= ladder ? "on" : ""} />)}</div></div>
+                    {ladder === 3 && (
+                      <>
+                        <p className="kid-prompt">낱말을 차례로 톡톡!</p>
+                        <div className="sentence-tray">
+                          {selectedWords.length ? selectedWords.map((token) => <button key={token.id} onClick={() => setSelectedWords((words) => words.filter((word) => word.id !== token.id))}>{token.word}</button>) : <span>여기에 문장을 만들어요</span>}
+                        </div>
+                        <div className="word-bank">
+                          {sentenceBank.map((token) => <button key={token.id} disabled={selectedWords.some((word) => word.id === token.id)} onClick={() => setSelectedWords((words) => [...words, token])}>{token.word}</button>)}
+                        </div>
+                        <button className="check-button" disabled={selectedWords.length !== activeSession.targetSentence.length} onClick={checkSentence}>이렇게 알려 줄래!</button>
+                      </>
                     )}
-                    <p className="tap-hint">답을 톡 눌러서 알려 줘</p>
-                  </>
+                    {ladder === 2 && (
+                      <>
+                        <p className="kid-prompt">빈칸에 들어갈 말은?</p>
+                        <div className="fill-sentence">{activeSession.fillBefore} <b>?</b> {activeSession.fillAfter}</div>
+                        <div className="choice-row">{activeSession.fillOptions.map((word) => <button key={word} onClick={() => answerLadder(word, activeSession.fillCorrect)}>{word}</button>)}</div>
+                        <p className="disguise-hint"><UiIcon name="bulb" size="small" /> {activeSession.hint}</p>
+                      </>
+                    )}
+                    {ladder === 1 && (
+                      <>
+                        <p className="kid-prompt">{activeSession.oneWordPrompt}</p>
+                        <div className="choice-row">{activeSession.oneWordOptions.map((word) => <button key={word} onClick={() => answerLadder(word, activeSession.oneWordCorrect)}>{word}</button>)}</div>
+                      </>
+                    )}
+                    {ladder === 0 && (
+                      <>
+                        <p className="kid-prompt">{activeSession.pointPrompt}</p>
+                        {activeSession.pointClockMarker ? (
+                          <PointingClock marker={activeSession.pointClockMarker} onPick={(number) => answerLadder(String(number), activeSession.pointCorrect)} />
+                        ) : (
+                          <div className="point-choice-grid">{activeSession.pointOptions.map((answer) => <button key={answer} onClick={() => answerLadder(answer, activeSession.pointCorrect)}>{answer}</button>)}</div>
+                        )}
+                        <p className="tap-hint">답을 톡 눌러서 알려 줘</p>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -1073,7 +1261,7 @@ export function MoramiApp() {
               <div className="learned-card">
                 <UiIcon name={teachSolved ? "star" : "sun"} size="large" />
                 <h2>{teachSolved ? "모르미가 이해했어!" : "오늘의 배움을 챙겼어!"}</h2>
-                <p>{teachSolved ? "네가 알려 준 말로 다시 해 볼게." : "내일 다시 만나면 한 번 더 알려 줘."}</p>
+                <p>{teachSolved ? `${childName}가 알려 준 말로 다시 해 볼게.` : "내일 다시 만나면 한 번 더 알려 줘."}</p>
                 <button className="primary-button" onClick={goWrap}>별노트에 적기 <span className="button-arrow" /></button>
               </div>
             )}
@@ -1101,7 +1289,7 @@ export function MoramiApp() {
 
       {stage === "homework" && (
         <section className="scene scene--homework">
-          <LifeMissionGame session={activeSession} problem={currentHomework} progress={`${Math.min(homeworkCorrect + 1, transferTarget)}/${transferTarget}`} solved={homeworkSolved} expression={expression} dialogue={dialogue} onAnswer={answerHomework} onFinish={() => finish(true)} />
+          <LifeMissionGame key={`${activeSession.id}-${homeworkIndex}`} session={activeSession} problem={currentHomework} progress={`${Math.min(homeworkCorrect + 1, transferTarget)}/${transferTarget}`} solved={homeworkSolved} expression={expression} dialogue={dialogue} onAnswer={answerHomework} onFinish={() => finish(true)} />
         </section>
       )}
 

@@ -24,7 +24,7 @@ function mockTurn(input: TurnRequest): TurnResponse {
     session_start: { dialogue: input.fallbackDialogue || "새로운 문제구나! 무엇부터 보면 좋을까?", expression: "surprised" },
     drill_correct: { dialogue: input.fallbackDialogue || "아하, 차근차근 생각하면 되는구나!", expression: "happy" },
     drill_retry: { dialogue: input.fallbackDialogue || "어디부터 다시 살펴보면 좋을까?", expression: "confused" },
-    teach_prompt: { dialogue: input.fallbackDialogue || "내가 조금 헷갈렸어. 네가 고쳐 줄래?", expression: "confused" },
+    teach_prompt: { dialogue: input.fallbackDialogue || "내가 조금 헷갈렸어. 지우가 고쳐 줄래?", expression: "confused" },
     teach_correct: { dialogue: `아, 그렇구나! ${learned}`, expression: "happy" },
     teach_retry: { dialogue: input.fallbackDialogue || "거의 알 것 같아. 한 단계 더 쉽게 알려 줄래?", expression: "confused" },
     homework_correct: { dialogue: "우와, 숫자가 바뀌어도 찾아냈네! 덕분에 숙제 끝!", expression: "celebrate" },
