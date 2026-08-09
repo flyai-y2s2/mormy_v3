@@ -327,6 +327,17 @@ function extraLifeProblem(session: Session, seed: number): Problem {
 function answersMatch(input: string, correct: string) {
   const clean = (value: string) => value.replace(/[\s,._!?]/g, "").toLowerCase();
   if (clean(input) === clean(correct)) return true;
+  const spokenShapes: Record<string, string[]> = {
+    "●": ["동그라미", "원"],
+    "▲": ["세모", "삼각형"],
+    "■": ["네모", "사각형", "정사각형"],
+    "◆": ["마름모"],
+    "↑": ["위", "위쪽"],
+    "↓": ["아래", "아래쪽"],
+    "←": ["왼쪽"],
+    "→": ["오른쪽"],
+  };
+  if (spokenShapes[correct]?.some((answer) => clean(answer) === clean(input))) return true;
   const inputNumbers = input.match(/\d+/g)?.join("");
   const correctNumbers = correct.match(/\d+/g)?.join("");
   return Boolean(inputNumbers && correctNumbers && inputNumbers === correctNumbers);
@@ -467,14 +478,14 @@ function StoreOrder({ problem }: { problem: Problem }) {
   );
 }
 
-function LifeMissionGame({ session, problem, progress, solved, onAnswer, onFinish }: { session: Session; problem: Problem; progress: string; solved: boolean; onAnswer: (answer: string) => void; onFinish: () => void }) {
+function LifeMissionGame({ session, problem, progress, solved, expression, dialogue, onAnswer, onFinish }: { session: Session; problem: Problem; progress: string; solved: boolean; expression: Expression; dialogue: string; onAnswer: (answer: string) => void; onFinish: () => void }) {
   const story = missionStory(session, problem);
   const [typedAnswer, setTypedAnswer] = useState("");
-  const [showTyping, setShowTyping] = useState(false);
+  const [showChoices, setShowChoices] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [answerFeedback, setAnswerFeedback] = useState<"correct" | "wrong" | null>(null);
   const [answerLocked, setAnswerLocked] = useState(false);
-  useEffect(() => { setTypedAnswer(""); setShowTyping(false); setSelectedAnswer(null); setAnswerFeedback(null); setAnswerLocked(false); }, [problem.prompt, progress]);
+  useEffect(() => { setTypedAnswer(""); setShowChoices(false); setSelectedAnswer(null); setAnswerFeedback(null); setAnswerLocked(false); }, [problem.prompt, progress]);
 
   function submitMissionAnswer(answer: string, fromChoice = false) {
     if (answerLocked) return;
@@ -485,6 +496,7 @@ function LifeMissionGame({ session, problem, progress, solved, onAnswer, onFinis
       setAnswerLocked(true);
       window.setTimeout(() => onAnswer(answer), 900);
     } else {
+      if (!fromChoice) setShowChoices(true);
       onAnswer(answer);
     }
   }
@@ -498,19 +510,24 @@ function LifeMissionGame({ session, problem, progress, solved, onAnswer, onFinis
         {problem.visual.type === "money" ? <StoreOrder problem={problem} /> : <div className={`mission-prop mission-prop--${story.scene}`}><ProblemCard problem={problem} /></div>}
       </div>
       {!solved ? <div className="mission-controls">
-        <p>{story.action} · 답을 하나 골라 봐요</p>
-        <div className="mission-choice-list">{problem.answers.map((answer) => {
-          const result = selectedAnswer === answer ? (answersMatch(answer, problem.correct) ? "is-correct" : "is-wrong") : "";
-          return <button key={answer} className={result} onClick={() => submitMissionAnswer(answer, true)} aria-pressed={selectedAnswer === answer} disabled={answerLocked}>{readableChoice(answer)}</button>;
-        })}</div>
-        <div className={`mission-answer-feedback ${answerFeedback ? `is-${answerFeedback}` : ""}`} role="status" aria-live="polite">
-          {answerFeedback === "correct" ? "정답이에요! 생활 속에서도 잘 해냈어요." : answerFeedback === "wrong" ? "괜찮아요. 그림을 보고 한 번 더 골라 봐요." : "답을 고르면 바로 알려 줄게요."}
+        <div className="mission-morami">
+          <Morami expression={answerFeedback === "correct" ? "happy" : answerFeedback === "wrong" ? "confused" : expression} size="small" />
+          <div><b>{showChoices ? "보기에서 한 번만 더 알려 줄래?" : "네 생각을 먼저 써서 알려 줘!"}</b><span>{answerFeedback ? (answerFeedback === "correct" ? "아, 이제 알겠어! 네가 알려 줘서 이해했어." : dialogue) : dialogue}</span></div>
         </div>
-        <button type="button" className="direct-answer-toggle" onClick={() => setShowTyping((value) => !value)}>{showTyping ? "직접 쓰기 닫기" : "⌨ 직접 써서 답하기"}</button>
-        {showTyping && <form className="mission-write" onSubmit={(event) => { event.preventDefault(); if (typedAnswer.trim()) submitMissionAnswer(typedAnswer); }}>
-          <input value={typedAnswer} onChange={(event) => setTypedAnswer(event.target.value)} placeholder="답을 직접 입력해요" aria-label="생활 미션 답 직접 입력" autoComplete="off" />
-          <button type="submit" disabled={!typedAnswer.trim() || answerLocked}>확인</button>
-        </form>}
+        <p>{showChoices ? `${story.action} · 보기에서 골라 모르미에게 알려 줘요` : `${story.action} · 먼저 직접 써서 모르미에게 알려 줘요`}</p>
+        {!showChoices ? <form className="mission-write" onSubmit={(event) => { event.preventDefault(); if (typedAnswer.trim()) submitMissionAnswer(typedAnswer); }}>
+          <input value={typedAnswer} onChange={(event) => setTypedAnswer(event.target.value)} placeholder="내 생각을 먼저 써 봐요" aria-label="모르미에게 알려 줄 생활 미션 답" autoComplete="off" autoFocus />
+          <button type="submit" disabled={!typedAnswer.trim() || answerLocked}>알려주기</button>
+        </form> : <>
+          <div className="mission-choice-list">{problem.answers.map((answer) => {
+            const result = selectedAnswer === answer ? (answersMatch(answer, problem.correct) ? "is-correct" : "is-wrong") : "";
+            return <button key={answer} className={result} onClick={() => submitMissionAnswer(answer, true)} aria-pressed={selectedAnswer === answer} disabled={answerLocked}>{readableChoice(answer)}</button>;
+          })}</div>
+          <button type="button" className="mission-rewrite" onClick={() => { setShowChoices(false); setSelectedAnswer(null); setAnswerFeedback(null); }}>내 답 다시 써 보기</button>
+        </>}
+        <div className={`mission-answer-feedback ${answerFeedback ? `is-${answerFeedback}` : ""}`} role="status" aria-live="polite">
+          {answerFeedback === "correct" ? "모르미가 이해했어요! 네 설명이 맞아요." : answerFeedback === "wrong" ? (showChoices ? "괜찮아요. 그림을 보고 보기에서 한 번 더 알려 줘요." : "괜찮아요. 그림을 보고 한 번 더 써 봐요.") : "모르미가 네 설명을 기다리고 있어요."}
+        </div>
       </div>
         : <button className="mission-finish" onClick={onFinish}>오늘 여행 마치기 <span className="button-arrow" /></button>}
     </div>
@@ -1084,8 +1101,7 @@ export function MoramiApp() {
 
       {stage === "homework" && (
         <section className="scene scene--homework">
-          <LifeMissionGame session={activeSession} problem={currentHomework} progress={`${Math.min(homeworkCorrect + 1, transferTarget)}/${transferTarget}`} solved={homeworkSolved} onAnswer={answerHomework} onFinish={() => finish(true)} />
-          <div className="homework-morami"><Morami expression={expression} size="small" /><SpeechBubble><p>{dialogue}</p></SpeechBubble></div>
+          <LifeMissionGame session={activeSession} problem={currentHomework} progress={`${Math.min(homeworkCorrect + 1, transferTarget)}/${transferTarget}`} solved={homeworkSolved} expression={expression} dialogue={dialogue} onAnswer={answerHomework} onFinish={() => finish(true)} />
         </section>
       )}
 
