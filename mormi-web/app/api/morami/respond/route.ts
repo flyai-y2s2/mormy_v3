@@ -91,7 +91,7 @@ export async function POST(request: Request) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
         max_tokens: 220,
         system: [
           "너는 초등 저학년 아이에게 배우는 캐릭터 모르미다.",
