@@ -29,19 +29,31 @@ type TurnResponse = {
 const allowedExpressions = new Set<Expression>(["calm", "happy", "confused", "surprised", "bright", "celebrate"]);
 
 function mockTurn(input: TurnRequest): TurnResponse {
-  const learned = input.learnedLine || "천천히 보면 알 수 있어!";
   const turns: Record<MoramiEvent, Omit<TurnResponse, "source">> = {
     session_start: { dialogue: input.fallbackDialogue || "새 문제야. 그림부터 볼까?", expression: "surprised" },
     drill_correct: { dialogue: input.fallbackDialogue || "아하, 이제 알겠어!", expression: "happy" },
     drill_retry: { dialogue: input.fallbackDialogue || "그림을 다시 볼까?", expression: "confused" },
     teach_prompt: { dialogue: input.fallbackDialogue || "어떻게 하는지 알려 줘.", expression: "confused" },
     teach_message: { dialogue: input.fallbackDialogue || "무엇을 먼저 하면 돼?", expression: "confused", understood: false },
-    teach_correct: { dialogue: `아하! ${learned}`, expression: "happy", understood: true },
+    teach_correct: { dialogue: "아하! 알려 줘서 고마워. 이제 알겠어!", expression: "happy", understood: true },
     teach_retry: { dialogue: input.fallbackDialogue || "한 번만 더 쉽게 알려 줘.", expression: "confused", understood: false },
     homework_correct: { dialogue: "우와, 생활 문제도 풀었네!", expression: "celebrate" },
     session_complete: { dialogue: "오늘도 알려 줘서 고마워!", expression: "celebrate" },
   };
   return { ...(turns[input.event || "session_start"]), source: "mock" };
+}
+
+function safeTeachDialogue(input: TurnRequest, understood: boolean) {
+  if (understood) return "아하! 지우가 알려 줘서 이제 알겠어. 고마워!";
+  const childMessage = input.childMessage?.trim() || "";
+  if (/^(응|엉|그래|맞아|ㅇㅇ|네|예)[.!?~ ]*$/i.test(childMessage)) return "응 말고, 지우의 생각을 들려줄래?";
+  const childTurns = (input.conversation || []).filter((message) => message.role === "child").length;
+  const questions = [
+    "지우는 어떻게 생각했어?",
+    "왜 그렇게 생각했는지 말해 줄래?",
+    "어디부터 살펴보면 좋을까?",
+  ];
+  return questions[Math.max(0, childTurns - 1) % questions.length];
 }
 
 function outputText(data: unknown): string | null {
@@ -95,9 +107,13 @@ export async function POST(request: Request) {
         max_tokens: 220,
         system: [
           "너는 초등 저학년 아이에게 배우는 캐릭터 모르미다.",
+          "모르미는 학생이고 아이가 선생님이다. 역할을 절대 바꾸지 않는다.",
           "아이의 띄어쓰기, 오타, 짧은 말투를 자연스럽게 이해한다.",
           "늘 쉽고 익숙한 한국어를 쓰고, 한 번에 질문 하나만 한다.",
           "대답은 짧은 두 문장 이내로 쓴다. 채점, 꾸중, O/X, 어려운 말은 쓰지 않는다.",
+          "정답, 계산 과정, 규칙, 방법, 힌트, 예시는 절대 먼저 말하지 않는다.",
+          "learnedLine과 correctIdea는 아이의 설명을 판단할 때만 쓰며, 대화에 그대로 쓰거나 바꾸어 말하지 않는다.",
+          "‘예를 들어’, ‘~하면 돼’, ‘한번 해봤어?’처럼 선생님이 가르치는 말투를 쓰지 않는다.",
           "teach_message에서는 아이가 learnedLine의 핵심 방법을 자기 말로 설명했는지 판단한다.",
           "단순한 응답(응, 그래, ㅇㅇ), 엉뚱한 말, 답 숫자만 말한 경우에는 understood를 false로 둔다.",
           "설명이 맞으면 understood를 true로 두고 고마워한다.",
@@ -127,11 +143,17 @@ export async function POST(request: Request) {
       console.warn("Morami Claude fallback: response JSON was invalid");
       return Response.json(fallback);
     }
+    const understood = Boolean(parsed.understood);
+    const guardedDialogue = input.event === "teach_message"
+      ? safeTeachDialogue(input, understood)
+      : input.event === "teach_correct"
+        ? "아하! 알려 줘서 고마워. 이제 알겠어!"
+        : parsed.dialogue.slice(0, 110);
     return Response.json({
-      dialogue: parsed.dialogue.slice(0, 110),
-      expression: parsed.expression,
+      dialogue: guardedDialogue,
+      expression: input.event === "teach_message" ? (understood ? "happy" : "calm") : parsed.expression,
       source: "anthropic",
-      understood: Boolean(parsed.understood),
+      understood,
     } satisfies TurnResponse);
   } catch (error) {
     console.error("Morami Claude fallback: request failed", error instanceof Error ? error.message : "unknown error");
