@@ -77,7 +77,10 @@ export async function POST(request: Request) {
 
   const fallback = mockTurn(input);
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return Response.json(fallback);
+  if (!apiKey) {
+    console.warn("Morami Claude fallback: ANTHROPIC_API_KEY is missing");
+    return Response.json(fallback);
+  }
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -115,16 +118,23 @@ export async function POST(request: Request) {
         }],
       }),
     });
-    if (!response.ok) return Response.json(fallback);
+    if (!response.ok) {
+      console.warn(`Morami Claude fallback: Anthropic returned ${response.status}`);
+      return Response.json(fallback);
+    }
     const parsed = parseClaudeJson(outputText(await response.json()));
-    if (!parsed?.dialogue || !parsed.expression || !allowedExpressions.has(parsed.expression)) return Response.json(fallback);
+    if (!parsed?.dialogue || !parsed.expression || !allowedExpressions.has(parsed.expression)) {
+      console.warn("Morami Claude fallback: response JSON was invalid");
+      return Response.json(fallback);
+    }
     return Response.json({
       dialogue: parsed.dialogue.slice(0, 110),
       expression: parsed.expression,
       source: "anthropic",
       understood: Boolean(parsed.understood),
     } satisfies TurnResponse);
-  } catch {
+  } catch (error) {
+    console.error("Morami Claude fallback: request failed", error instanceof Error ? error.message : "unknown error");
     return Response.json(fallback);
   }
 }
